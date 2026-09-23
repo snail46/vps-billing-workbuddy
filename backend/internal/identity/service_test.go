@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/audit"
 )
 
 // The fakes below stand in for the database and Redis, which this machine has
@@ -164,11 +166,11 @@ func (f *fakeSessions) DeleteForSubject(_ context.Context, subject SubjectType, 
 }
 
 type fakeAuditor struct {
-	events []AuditEvent
+	events []audit.Event
 	err    error
 }
 
-func (f *fakeAuditor) Record(_ context.Context, event AuditEvent) error {
+func (f *fakeAuditor) Record(_ context.Context, event audit.Event) error {
 	if f.err != nil {
 		return f.err
 	}
@@ -561,7 +563,7 @@ func TestLoginAdminRefusalIsAuditedWithoutTheFullAddress(t *testing.T) {
 
 	_, err := h.service.LoginAdmin(ctx, LoginInput{
 		Email: "ops@example.com", Password: "the wrong password",
-		ClientContext: AuditContext{IP: "203.0.113.7", UserAgent: "test"},
+		ClientContext: audit.Context{IP: "203.0.113.7", UserAgent: "test"},
 	})
 	if !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
@@ -570,14 +572,16 @@ func TestLoginAdminRefusalIsAuditedWithoutTheFullAddress(t *testing.T) {
 	if len(h.auditor.events) != 1 || h.auditor.events[0].Action != ActionAdminLoginRefused {
 		t.Fatalf("expected one refusal audit entry, got %+v", h.auditor.events)
 	}
-	attempted := h.auditor.events[0].Metadata["attempted"]
+	attempted := h.auditor.events[0].Details["attempted"]
 	// The trail has to be readable by operators without becoming a list of the
 	// addresses that exist.
 	if attempted != "o***@example.com" {
 		t.Errorf("masked address = %q", attempted)
 	}
-	if h.auditor.events[0].Metadata["ip"] != "203.0.113.7" {
-		t.Errorf("the source address was not recorded: %+v", h.auditor.events[0].Metadata)
+	// The source address is a first-class field, so an operator filtering by it does
+	// not depend on a JSON key being spelled the same way at every call site.
+	if h.auditor.events[0].Context.IP != "203.0.113.7" {
+		t.Errorf("the source address was not recorded: %+v", h.auditor.events[0].Context)
 	}
 }
 
@@ -591,14 +595,14 @@ func TestLogoutAdminAuditsOnceAndToleratesAMissingSession(t *testing.T) {
 		t.Fatalf("LoginAdmin: %v", err)
 	}
 
-	if err := h.service.LogoutAdmin(ctx, result.Session.ID); err != nil {
+	if err := h.service.LogoutAdmin(ctx, result.Session.ID, audit.Context{IP: "203.0.113.7"}); err != nil {
 		t.Fatalf("LogoutAdmin: %v", err)
 	}
 	if _, err := h.sessions.Get(ctx, SubjectAdmin, result.Session.ID); !errors.Is(err, ErrSessionNotFound) {
 		t.Error("the session survived the logout")
 	}
 
-	actions := map[AuditAction]int{}
+	actions := map[string]int{}
 	for _, event := range h.auditor.events {
 		actions[event.Action]++
 	}
@@ -611,10 +615,10 @@ func TestLogoutAdminAuditsOnceAndToleratesAMissingSession(t *testing.T) {
 
 	// A logout of a session that has already gone is not an error, and produces no
 	// second entry: there is nothing to report.
-	if err := h.service.LogoutAdmin(ctx, result.Session.ID); err != nil {
+	if err := h.service.LogoutAdmin(ctx, result.Session.ID, audit.Context{IP: "203.0.113.7"}); err != nil {
 		t.Errorf("a repeated logout returned %v", err)
 	}
-	actions = map[AuditAction]int{}
+	actions = map[string]int{}
 	for _, event := range h.auditor.events {
 		actions[event.Action]++
 	}

@@ -47,6 +47,18 @@ UPDATE admins
 SET last_login_at = now(), updated_at = now()
 WHERE id = $1;
 
+-- name: UpdateUserPasswordHash :exec
+-- Replacing the hash is how a raised argon2 cost is applied. It only ever happens
+-- on a successful login, which is the only moment the plaintext exists.
+UPDATE users
+SET password_hash = $2, updated_at = now()
+WHERE id = $1;
+
+-- name: UpdateAdminPasswordHash :exec
+UPDATE admins
+SET password_hash = $2, updated_at = now()
+WHERE id = $1;
+
 -- name: ListPermissionsForAdmin :many
 -- The effective permission set is resolved from the database on each request
 -- rather than cached in the session, so revoking a role takes effect immediately

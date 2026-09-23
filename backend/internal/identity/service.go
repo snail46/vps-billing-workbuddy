@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/audit"
 )
 
 // Domain errors.
@@ -113,39 +115,19 @@ type PermissionResolver interface {
 	PermissionsForAdmin(ctx context.Context, adminID uuid.UUID) ([]string, error)
 }
 
-// AuditAction names one recorded action.
-type AuditAction string
-
-// Audited actions.
+// Audited actions this domain produces.
+//
+// The vocabulary lives here rather than in internal/audit so that a domain names its
+// own actions, and the audit package is not a file every phase has to edit.
 //
 // Only administrative authentication is audited. Behaving otherwise would bury the
 // high-risk entries — the ones docs/14 requires — among every ordinary sign-in, and
 // user sign-ins are already visible as last_login_at plus the request log.
 const (
-	ActionAdminLoggedIn     AuditAction = "admin.login.succeeded"
-	ActionAdminLoggedOut    AuditAction = "admin.logout"
-	ActionAdminLoginRefused AuditAction = "admin.login.refused"
+	ActionAdminLoggedIn     = "admin.login.succeeded"
+	ActionAdminLoggedOut    = "admin.logout"
+	ActionAdminLoginRefused = "admin.login.refused"
 )
-
-// AuditEvent is one entry for the audit trail.
-type AuditEvent struct {
-	ActorType    string
-	ActorID      uuid.UUID
-	Action       AuditAction
-	ResourceType string
-	ResourceID   uuid.UUID
-	// Metadata is recorded as the event's after-data. Audit rows are append-only, so
-	// this is a snapshot rather than a diff.
-	Metadata map[string]string
-}
-
-// Auditor records high-impact actions.
-//
-// It is an interface so the service can be tested without a database, and so a
-// later phase can wrap it (an outbox, for instance) without touching callers.
-type Auditor interface {
-	Record(ctx context.Context, event AuditEvent) error
-}
 
 // Deps are the service's collaborators.
 type Deps struct {
@@ -153,7 +135,7 @@ type Deps struct {
 	Permissions PermissionResolver
 	Sessions    SessionStore
 	Hasher      *PasswordHasher
-	Auditor     Auditor
+	Auditor     audit.Recorder
 	// Now is injectable so expiry and timestamps are testable.
 	Now func() time.Time
 }
@@ -164,7 +146,7 @@ type Service struct {
 	permissions PermissionResolver
 	sessions    SessionStore
 	hasher      *PasswordHasher
-	auditor     Auditor
+	auditor     audit.Recorder
 	now         func() time.Time
 }
 
@@ -302,15 +284,7 @@ type LoginInput struct {
 	Password string
 	// ClientContext is what the audit entry records about where the attempt came
 	// from. It is supplied by the transport layer, which is the only layer that knows.
-	ClientContext AuditContext
-}
-
-// AuditContext is the request-derived part of an audit entry.
-type AuditContext struct {
-	IP        string
-	UserAgent string
-	RequestID string
-	TraceID   string
+	ClientContext audit.Context
 }
 
 // LoginResult is what a successful login produces.
@@ -434,12 +408,13 @@ func (s *Service) LoginAdmin(ctx context.Context, input LoginInput) (LoginResult
 		return LoginResult{}, fmt.Errorf("identity: record login: %w", err)
 	}
 
-	s.audit(ctx, AuditEvent{
+	s.audit(ctx, audit.Event{
 		ActorType:    string(SubjectAdmin),
 		ActorID:      admin.ID,
 		Action:       ActionAdminLoggedIn,
 		ResourceType: "admin",
 		ResourceID:   admin.ID,
+		Context:      input.ClientContext,
 	})
 
 	return LoginResult{Session: session, Admin: admin, Permissions: permissions}, nil
@@ -458,7 +433,7 @@ func (s *Service) Logout(ctx context.Context, subject SubjectType, sessionID str
 // The subject id is needed for the audit entry, so the session is read before it is
 // deleted. A session that has already gone is not an error and is not audited: there
 // is nothing to report.
-func (s *Service) LogoutAdmin(ctx context.Context, sessionID string) error {
+func (s *Service) LogoutAdmin(ctx context.Context, sessionID string, client audit.Context) error {
 	session, err := s.sessions.Get(ctx, SubjectAdmin, sessionID)
 	if err != nil {
 		if errors.Is(err, ErrSessionNotFound) {
@@ -471,12 +446,13 @@ func (s *Service) LogoutAdmin(ctx context.Context, sessionID string) error {
 		return err
 	}
 
-	s.audit(ctx, AuditEvent{
+	s.audit(ctx, audit.Event{
 		ActorType:    string(SubjectAdmin),
 		ActorID:      session.SubjectID,
 		Action:       ActionAdminLoggedOut,
 		ResourceType: "admin",
 		ResourceID:   session.SubjectID,
+		Context:      client,
 	})
 	return nil
 }
@@ -515,23 +491,19 @@ func (s *Service) replaceAdminHash(ctx context.Context, admin Admin, password st
 
 // auditRefusal records a refused administrator authentication.
 //
-// The address is masked: an audit trail has to be readable by operators, and the
-// trail itself must not become a list of the addresses that exist.
-func (s *Service) auditRefusal(ctx context.Context, attempted string, client AuditContext) {
-	s.audit(ctx, AuditEvent{
+// The address is masked inside Details: an audit trail has to be readable by
+// operators, and the trail itself must not become a list of the addresses that exist.
+func (s *Service) auditRefusal(ctx context.Context, attempted string, client audit.Context) {
+	s.audit(ctx, audit.Event{
 		ActorType:    string(SubjectAdmin),
 		Action:       ActionAdminLoginRefused,
 		ResourceType: "admin",
-		Metadata: map[string]string{
-			"attempted":  maskEmail(attempted),
-			"ip":         client.IP,
-			"user_agent": client.UserAgent,
-			"request_id": client.RequestID,
-		},
+		Details:      map[string]string{"attempted": maskEmail(attempted)},
+		Context:      client,
 	})
 }
 
-func (s *Service) audit(ctx context.Context, event AuditEvent) {
+func (s *Service) audit(ctx context.Context, event audit.Event) {
 	if s.auditor == nil {
 		return
 	}
