@@ -16,20 +16,63 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/authmw"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/config"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/health"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/httpx"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/identity"
 	bmw "github.com/snail46/vps-billing-workbuddy/backend/internal/middleware"
 )
 
 // BasePath is the prefix of the product API, per docs/08-API-CONTRACT.md.
 const BasePath = "/api/v1"
 
+// Auth is the identity surface the router mounts.
+//
+// It is a pointer field so that a build without an identity service — Phase 0, and any
+// test that exercises only the foundation — mounts no authentication routes at all. The
+// alternative, mounting routes that would fail on every request, would be a surface that
+// looks present and is not.
+type Auth struct {
+	Service  *identity.Service
+	Sessions *authmw.Middleware
+	// Login and Register carry the throttling policy. They are separate instances
+	// because their budgets genuinely differ: see the note on Attempts.PerAccount.
+	Login      authmw.Attempts
+	AdminLogin authmw.Attempts
+	Register   authmw.Attempts
+}
+
 // Deps are the collaborators the router needs.
 type Deps struct {
 	Config config.Config
 	Logger *slog.Logger
 	Health *health.Handler
+	Auth   *Auth
+}
+
+// Handler is the assembled HTTP surface.
+//
+// It embeds chi.Router rather than http.Handler so that a test can enumerate what is
+// mounted — the route registry test compares its declarations against the routes chi
+// actually holds, and a test cannot do that through an http.Handler. Embedding the router
+// keeps that honest: there is one router, not a router and a copy of its route table.
+type Handler struct {
+	chi.Router
+	// requirements maps "METHOD /path" to what the administrative endpoint declares it
+	// needs.
+	requirements map[string]string
+}
+
+// AdminRequirements reports what each administrative endpoint declares it requires.
+//
+// The map is copied, so a test cannot accidentally change what the router enforces.
+func (h *Handler) AdminRequirements() map[string]string {
+	out := make(map[string]string, len(h.requirements))
+	for path, requirement := range h.requirements {
+		out[path] = requirement
+	}
+	return out
 }
 
 // NewRouter builds the HTTP handler.
@@ -49,7 +92,7 @@ type Deps struct {
 //
 // Note the deliberate absence of a client-IP middleware; the reasoning is
 // recorded inline below.
-func NewRouter(deps Deps) http.Handler {
+func NewRouter(deps Deps) *Handler {
 	logger := deps.Logger
 	if logger == nil {
 		logger = slog.Default()
@@ -78,7 +121,7 @@ func NewRouter(deps Deps) http.Handler {
 	}))
 	r.Use(bmw.CORS(deps.Config.AllowedOrigins()))
 
-	api := &api{logger: logger}
+	api := &api{logger: logger, auth: deps.Auth}
 
 	// Router-level handlers cover paths that match no route at all, so the
 	// envelope holds even for a malformed URL.
@@ -90,22 +133,56 @@ func NewRouter(deps Deps) http.Handler {
 		r.Get("/health/ready", deps.Health.Ready())
 	}
 
+	requirements := map[string]string{}
+
 	r.Route(BasePath, func(v1 chi.Router) {
-		// Phase 0 intentionally exposes no business routes. Registering a
-		// placeholder endpoint would mean shipping an API that the roadmap has
-		// not specified yet, and the surface is added per phase behind this
-		// sub-router so that the middleware chain and the envelope are already
-		// proven by the foundation.
 		v1.NotFound(api.notFound)
 		v1.MethodNotAllowed(api.methodNotAllowed)
+
+		// Each phase mounts its own routes behind this sub-router, so the middleware
+		// chain and the envelope are shared rather than rebuilt per phase.
+		if deps.Auth != nil {
+			requirements = mountAuth(v1, api)
+		}
 	})
 
-	return r
+	return &Handler{Router: r, requirements: requirements}
+}
+
+// mountAuth installs the authentication surface.
+//
+// A route's middleware is given at registration rather than on the group it belongs to,
+// because the throttling budgets differ per endpoint: registration counts attempts per
+// client address only, while sign-in counts them per address and per submitted account.
+func mountAuth(v1 chi.Router, api *api) map[string]string {
+	sessions := api.auth.Sessions
+
+	mount(v1, http.MethodPost, "/auth/register", api.registerUser,
+		api.auth.Register.Middleware)
+	mount(v1, http.MethodPost, "/auth/login", api.loginUser,
+		api.auth.Login.Middleware)
+	mount(v1, http.MethodPost, "/auth/logout", api.logoutUser,
+		sessions.RequireUser, sessions.RequireCSRF)
+	mount(v1, http.MethodGet, "/auth/me", api.meUser,
+		sessions.RequireUser)
+
+	admin := newAdminRoutes(api)
+	v1.Route("/admin", func(ar chi.Router) {
+		admin.mountOn(ar)
+	})
+
+	return admin.requirements
+}
+
+// mount registers a handler behind the given middleware.
+func mount(r chi.Router, method, pattern string, handler http.HandlerFunc, chain ...func(http.Handler) http.Handler) {
+	r.With(chain...).Method(method, pattern, handler)
 }
 
 // api carries the collaborators shared by the contract-level handlers.
 type api struct {
 	logger *slog.Logger
+	auth   *Auth
 }
 
 func (a *api) notFound(w http.ResponseWriter, r *http.Request) {

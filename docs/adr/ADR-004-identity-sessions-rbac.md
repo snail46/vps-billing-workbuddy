@@ -137,11 +137,45 @@ carries the same correlation ids, and the audit row is the authoritative record.
 
 ### 8. Phase 1 defines no pages
 
-`TASKS.md` assigns the user-facing and admin-facing screens to Phases 8 and 9. The
-bilingual requirement here covers the error keys and any identity-related
-user-visible strings, which are added to the shared i18n resources so both
-locales stay complete. Building login screens now would be the cross-phase
-shortcut the instructions forbid.
+`TASKS.md` assigns the customer and administrative screens to Phases 8 and 9. Phase 1
+therefore ships no route under `user-web` or `admin-web` beyond what already exists, and
+deliberately no sign-in form: a page built before the flows it belongs to would have to be
+rebuilt when they arrive, and the backend surface is provable without one.
+
+### 9. Decisions the implementation forced
+
+Four things were not settled by the design above and could have gone either way. They are
+recorded because each is cheap to reverse now and expensive later.
+
+**The session cookie is not path-scoped.** Narrowing each cookie to its own API prefix
+looked like extra isolation, and it is not: a cookie's path is a browser-side rule rather
+than a security boundary, and a cookie withheld because a path did not match is a bug that
+presents as "sign-in silently does nothing". The separation that matters is server-side —
+two names, two namespaces, two subject types — and that is where it is enforced.
+
+**Registration is throttled per client address only.** Sign-in is counted per address *and*
+per submitted account, because the account is what an attacker is guessing against.
+Registration carries no secret to guess, and the submitted address usually has no account
+yet, so counting it per account would let anyone lock out the person who actually owns the
+address while buying nothing.
+
+**Administrative sign-in has its own budget scope.** The two credential spaces hold separate
+account tables, so the same address can exist in both. A shared scope would let an attempt
+against one space spend the other's budget — a user sign-in exhausting an administrator's
+allowance, or the reverse.
+
+**The two spaces have different not-found errors.** `ErrUserNotFound` and `ErrAdminNotFound`
+replace a single shared error. The adapter now takes the not-found error as an argument, and
+the reason is that the alternative was already wrong in the code: the administrative sign-in
+path checked `ErrUserNotFound`, which was correct only because one error served both spaces.
+An error that does not say which space failed invites exactly the confusion the separation
+exists to prevent.
+
+One ordering is load-bearing and is stated here so it is not rearranged: **the session check
+must be mounted outside the CSRF check.** `chi` applies middleware in the order given, and a
+token check mounted first finds no principal and refuses every mutating request. It fails
+closed rather than open, which is the safe direction, and a test pins both the correct order
+and the fact that the wrong one is refused.
 
 ## Alternatives
 

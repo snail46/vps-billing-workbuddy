@@ -36,6 +36,12 @@ func validConfig() config.Config {
 		LogLevel:            "info",
 		LogFormat:           "json",
 		WorkerTickInterval:  30 * time.Second,
+		// The authentication budgets have to be positive: a limit of zero would refuse
+		// every attempt, which is a footgun rather than a way to disable throttling.
+		RateLimitLoginPerIP:      20,
+		RateLimitLoginPerAccount: 5,
+		RateLimitRegisterPerIP:   10,
+		RateLimitWindow:          15 * time.Minute,
 	}
 }
 

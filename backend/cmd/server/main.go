@@ -16,12 +16,15 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/authmw"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/config"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/db"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/health"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/httpapi"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/identity"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/logging"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/redisx"
+	identitystore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/identity"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/version"
 )
 
@@ -93,9 +96,55 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 	defer func() { _ = redisClient.Close() }()
 
+	// The identity collaborator graph is assembled here, in the process that serves
+	// HTTP, rather than inside the router. The router receives an already-built service,
+	// which is what keeps it a description of the surface rather than a place where
+	// dependencies are chosen.
+	//
+	// The directory and the audit recorder are both built over the pool. A future phase
+	// that has to write a change and its audit entry in one transaction builds both from
+	// the transaction instead; that is why the constructors take sqlcgen.DBTX rather than
+	// a pool.
+	hasher, err := identity.NewPasswordHasher(identity.DefaultPasswordParams())
+	if err != nil {
+		return err
+	}
+	identityService, err := identity.NewService(identity.Deps{
+		Directory:   identitystore.NewDirectory(pool),
+		Permissions: identitystore.NewDirectory(pool),
+		Sessions:    redisx.NewSessionStore(redisClient),
+		Hasher:      hasher,
+		Auditor:     identitystore.NewRecorder(pool),
+	})
+	if err != nil {
+		return err
+	}
+
+	sessions := authmw.New(identityService, logger, authmw.SessionCookie{Secure: cfg.SecureCookies()})
+	attempts := func(scope authmw.Scope, perIP, perAccount int) authmw.Attempts {
+		return authmw.Attempts{
+			Counter:    redisx.NewAttemptCounter(redisClient),
+			Logger:     logger,
+			Scope:      scope,
+			Window:     cfg.RateLimitWindow,
+			PerIP:      perIP,
+			PerAccount: perAccount,
+		}
+	}
+
 	router := httpapi.NewRouter(httpapi.Deps{
 		Config: cfg,
 		Logger: logger,
+		Auth: &httpapi.Auth{
+			Service:  identityService,
+			Sessions: sessions,
+			// Registration is counted per client address only: the submitted address
+			// usually has no account yet, so counting it would let anyone lock out the
+			// person who owns it without there being a secret to guess in the first place.
+			Login:      attempts(authmw.ScopeLogin, cfg.RateLimitLoginPerIP, cfg.RateLimitLoginPerAccount),
+			AdminLogin: attempts(authmw.ScopeAdminLogin, cfg.RateLimitLoginPerIP, cfg.RateLimitLoginPerAccount),
+			Register:   attempts(authmw.ScopeRegister, cfg.RateLimitRegisterPerIP, 0),
+		},
 		Health: health.NewHandler(health.Options{
 			Environment: cfg.AppEnv,
 			// Only platform-critical dependencies are registered. A single

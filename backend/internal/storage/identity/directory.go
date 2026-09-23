@@ -46,7 +46,7 @@ func (d *Directory) CreateUser(ctx context.Context, user identity.User) (identit
 func (d *Directory) FindUserByEmail(ctx context.Context, email string) (identity.User, error) {
 	row, err := d.queries.GetUserByEmail(ctx, email)
 	if err != nil {
-		return identity.User{}, mapLookupError(err)
+		return identity.User{}, mapLookupError(err, identity.ErrUserNotFound)
 	}
 	return toUser(row), nil
 }
@@ -55,7 +55,7 @@ func (d *Directory) FindUserByEmail(ctx context.Context, email string) (identity
 func (d *Directory) FindUserByID(ctx context.Context, id uuid.UUID) (identity.User, error) {
 	row, err := d.queries.GetUserByID(ctx, id)
 	if err != nil {
-		return identity.User{}, mapLookupError(err)
+		return identity.User{}, mapLookupError(err, identity.ErrUserNotFound)
 	}
 	return toUser(row), nil
 }
@@ -83,7 +83,7 @@ func (d *Directory) UpdateUserPasswordHash(ctx context.Context, id uuid.UUID, ha
 func (d *Directory) FindAdminByEmail(ctx context.Context, email string) (identity.Admin, error) {
 	row, err := d.queries.GetAdminByEmail(ctx, email)
 	if err != nil {
-		return identity.Admin{}, mapLookupError(err)
+		return identity.Admin{}, mapLookupError(err, identity.ErrAdminNotFound)
 	}
 	return toAdmin(row), nil
 }
@@ -92,7 +92,7 @@ func (d *Directory) FindAdminByEmail(ctx context.Context, email string) (identit
 func (d *Directory) FindAdminByID(ctx context.Context, id uuid.UUID) (identity.Admin, error) {
 	row, err := d.queries.GetAdminByID(ctx, id)
 	if err != nil {
-		return identity.Admin{}, mapLookupError(err)
+		return identity.Admin{}, mapLookupError(err, identity.ErrAdminNotFound)
 	}
 	return toAdmin(row), nil
 }

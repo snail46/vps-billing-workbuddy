@@ -31,9 +31,13 @@ const uniqueViolation = "23505"
 // The domain distinguishes "no such account" from "the lookup failed", which is what
 // lets the service decide what a caller may learn — and only this layer can make that
 // distinction, because only this layer sees the driver's row handling.
-func mapLookupError(err error) error {
+//
+// The not-found error is supplied by the caller rather than fixed here: users and
+// administrators are separate credential spaces, and one shared error would leave the
+// service unable to say which space failed.
+func mapLookupError(err, notFound error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
-		return identity.ErrUserNotFound
+		return notFound
 	}
 	return fmt.Errorf("identitystore: lookup failed: %w", err)
 }

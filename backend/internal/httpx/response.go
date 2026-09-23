@@ -19,6 +19,16 @@ import (
 // ContentTypeJSON is the content type of every API response.
 const ContentTypeJSON = "application/json; charset=utf-8"
 
+// MaxRequestBodyBytes bounds the request bodies the platform will read.
+//
+// It is a property of the contract rather than of one handler, because two layers read
+// the same body: the authentication throttling middleware reads it to find the account
+// being attempted, and the handler reads it to decode the request. Two different bounds
+// would mean a request accepted by one and rejected by the other, for a reason the
+// caller cannot see. No documented request is anywhere near this size — the largest is
+// an order-replacement body of a few hundred bytes.
+const MaxRequestBodyBytes = 4 << 10
+
 type successEnvelope struct {
 	Success   bool   `json:"success"`
 	Data      any    `json:"data"`

@@ -55,7 +55,7 @@ func Observability(logger *slog.Logger) func(http.Handler) http.Handler {
 					slog.Int("status", status),
 					slog.Int64("duration_ms", duration.Milliseconds()),
 					slog.Int("bytes", ww.BytesWritten()),
-					slog.String("remote_ip", clientIP(r)),
+					slog.String("remote_ip", ClientIP(r)),
 					slog.String("user_agent", r.UserAgent()),
 				)
 			}()
@@ -76,12 +76,17 @@ func levelForStatus(status int) slog.Level {
 	}
 }
 
-func clientIP(r *http.Request) string {
-	// RemoteAddr is the address of the direct peer. Forwarded-IP headers are
-	// intentionally not consulted: nothing in the Phase 0 topology sits in front
-	// of the server, and trusting those headers without knowing the proxy
-	// topology would let a client forge the address recorded here. See the note
-	// in httpapi.NewRouter.
+// ClientIP returns the address of the direct peer.
+//
+// Exported because two things must agree on it: the address recorded in the access
+// log and the address a rate limit counts against. If those disagreed, an operator
+// reading the log could not explain a limit that fired.
+//
+// Forwarded-IP headers are intentionally not consulted: nothing in the Phase 0
+// topology sits in front of the server, and trusting those headers without knowing
+// the proxy topology would let a client forge the address recorded here and counted
+// here. See the note in httpapi.NewRouter.
+func ClientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

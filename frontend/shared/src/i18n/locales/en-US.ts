@@ -56,6 +56,17 @@ export const enUS: TranslationShape<typeof zhCN> = {
     network_error: "Could not reach the server. Check your connection and retry.",
     invalid_response: "The server returned data we could not understand.",
     unknown: "An unexpected error occurred. Please try again.",
+    // The authentication failures. They are separate from the transport codes above
+    // because they say something more specific: `unauthorized` means the session is gone
+    // and the user should sign in again, while `invalid_credentials` means the password
+    // just entered does not match. Showing the first for the second would send someone
+    // looking for a session they never had.
+    invalid_credentials: "That email address or password is not correct.",
+    account_suspended: "This account has been suspended. Please contact support.",
+    email_taken: "That email address is already registered. Sign in instead, or use another.",
+    invalid_email: "Enter a valid email address.",
+    invalid_password: "That password does not meet the requirements. Please choose a longer one.",
+    invalid_locale: "That language is not supported.",
   },
   health: {
     title: "Platform status",

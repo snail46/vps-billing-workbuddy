@@ -53,6 +53,17 @@ export const zhCN = {
     network_error: "网络连接失败，请检查网络后重试。",
     invalid_response: "服务返回了无法识别的数据。",
     unknown: "发生未知错误，请稍后重试。",
+    // The authentication failures. They are separate from the transport codes above
+    // because they say something more specific: `unauthorized` means the session is gone
+    // and the user should sign in again, while `invalid_credentials` means the password
+    // just entered does not match. Showing the first for the second would send someone
+    // looking for a session they never had.
+    invalid_credentials: "邮箱或密码不正确。",
+    account_suspended: "该账号已被停用，请联系客服。",
+    email_taken: "该邮箱已被注册，请直接登录或更换邮箱。",
+    invalid_email: "请输入有效的邮箱地址。",
+    invalid_password: "密码不符合要求，请设置更长的密码。",
+    invalid_locale: "暂不支持该语言。",
   },
   health: {
     title: "平台状态",

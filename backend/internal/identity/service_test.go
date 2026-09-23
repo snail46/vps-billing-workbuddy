@@ -92,7 +92,7 @@ func (f *fakeDirectory) FindAdminByEmail(_ context.Context, email string) (Admin
 			return admin, nil
 		}
 	}
-	return Admin{}, ErrUserNotFound
+	return Admin{}, ErrAdminNotFound
 }
 
 func (f *fakeDirectory) FindAdminByID(_ context.Context, id uuid.UUID) (Admin, error) {
@@ -101,7 +101,7 @@ func (f *fakeDirectory) FindAdminByID(_ context.Context, id uuid.UUID) (Admin, e
 			return admin, nil
 		}
 	}
-	return Admin{}, ErrUserNotFound
+	return Admin{}, ErrAdminNotFound
 }
 
 func (f *fakeDirectory) RecordAdminLogin(_ context.Context, id uuid.UUID) error {

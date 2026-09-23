@@ -96,13 +96,21 @@ type Directory interface {
 	UpdateAdminPasswordHash(ctx context.Context, id uuid.UUID, hash string) error
 }
 
-// ErrUserNotFound reports a lookup that matched nothing.
+// ErrUserNotFound reports a user lookup that matched nothing.
 //
 // Separate from ErrInvalidCredentials: the directory says what the database did,
 // and the service decides what the caller is allowed to learn. Collapsing them in
 // the directory would make it impossible for the service to tell "no account" from
 // "the database is broken".
 var ErrUserNotFound = errors.New("identity: no such user")
+
+// ErrAdminNotFound reports an administrator lookup that matched nothing.
+//
+// Distinct from ErrUserNotFound so that a lookup failure in the admin space cannot be
+// mistaken for one in the user space. The two are different credential spaces, and an
+// error that does not say which one failed invites exactly the confusion the separation
+// exists to prevent.
+var ErrAdminNotFound = errors.New("identity: no such admin")
 
 // PermissionResolver returns an admin's effective permissions.
 //
@@ -364,7 +372,7 @@ func (s *Service) LoginAdmin(ctx context.Context, input LoginInput) (LoginResult
 
 	admin, err := s.directory.FindAdminByEmail(ctx, email)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, ErrAdminNotFound) {
 			s.hasher.VerifyUnknownAccount(input.Password)
 			s.auditRefusal(ctx, email, input.ClientContext)
 			return LoginResult{}, ErrInvalidCredentials
@@ -465,6 +473,91 @@ func (s *Service) CurrentSession(ctx context.Context, subject SubjectType, sessi
 // EffectivePermissions resolves an admin's permissions.
 func (s *Service) EffectivePermissions(ctx context.Context, adminID uuid.UUID) ([]string, error) {
 	return s.permissions.PermissionsForAdmin(ctx, adminID)
+}
+
+// UserSession is an authenticated user together with what authenticated them.
+type UserSession struct {
+	Session Session
+	User    User
+}
+
+// AdminSession is an authenticated administrator with their effective permissions.
+type AdminSession struct {
+	Session     Session
+	Admin       Admin
+	Permissions []string
+}
+
+// CurrentUser resolves the session's owner for an authenticated request.
+//
+// It reads the account on every request rather than trusting the session alone, so a
+// suspension takes effect on the next request instead of whenever the session expires.
+// That is a query per request, and it is deliberate: the alternative is a credential
+// that keeps working after an operator has decided it should not.
+func (s *Service) CurrentUser(ctx context.Context, sessionID string) (UserSession, error) {
+	session, err := s.sessions.Get(ctx, SubjectUser, sessionID)
+	if err != nil {
+		return UserSession{}, err
+	}
+
+	user, err := s.directory.FindUserByID(ctx, session.SubjectID)
+	if err != nil {
+		return UserSession{}, s.resolveLookupFailure(ctx, SubjectUser, sessionID, err)
+	}
+	if user.Status != StatusActive {
+		return UserSession{}, ErrAccountSuspended
+	}
+
+	return UserSession{Session: session, User: user}, nil
+}
+
+// CurrentAdmin resolves the session's administrator, with permissions, for an
+// authenticated request.
+//
+// Permissions are resolved here rather than stored in the session so that removing a
+// role takes effect on the next request. The suspension check has the same purpose as
+// its counterpart above.
+func (s *Service) CurrentAdmin(ctx context.Context, sessionID string) (AdminSession, error) {
+	session, err := s.sessions.Get(ctx, SubjectAdmin, sessionID)
+	if err != nil {
+		return AdminSession{}, err
+	}
+
+	admin, err := s.directory.FindAdminByID(ctx, session.SubjectID)
+	if err != nil {
+		return AdminSession{}, s.resolveLookupFailure(ctx, SubjectAdmin, sessionID, err)
+	}
+	if admin.Status != StatusActive {
+		return AdminSession{}, ErrAccountSuspended
+	}
+
+	permissions, err := s.permissions.PermissionsForAdmin(ctx, admin.ID)
+	if err != nil {
+		return AdminSession{}, fmt.Errorf("identity: resolve permissions: %w", err)
+	}
+
+	return AdminSession{Session: session, Admin: admin, Permissions: permissions}, nil
+}
+
+// resolveLookupFailure decides what a failed account lookup means.
+//
+// A session whose account has been deleted is ended, and the caller is told the session
+// does not exist. The distinction matters: answering "no such account" would confirm to
+// whoever still holds the cookie that the account was deleted, and leaving the session
+// in place would keep a credential alive for an account that is gone.
+//
+// A lookup that failed for any other reason is propagated unchanged, because "the
+// database is unreachable" and "this credential is invalid" call for different
+// answers — one is a 503 and the other is a 401.
+func (s *Service) resolveLookupFailure(ctx context.Context, subject SubjectType, sessionID string, err error) error {
+	if !errors.Is(err, ErrUserNotFound) && !errors.Is(err, ErrAdminNotFound) {
+		return fmt.Errorf("identity: read account: %w", err)
+	}
+
+	if delErr := s.sessions.Delete(ctx, subject, sessionID); delErr != nil {
+		return fmt.Errorf("identity: end session for a missing account: %w", delErr)
+	}
+	return ErrSessionNotFound
 }
 
 func (s *Service) replaceUserHash(ctx context.Context, user User, password string) error {

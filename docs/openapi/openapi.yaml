@@ -5,12 +5,19 @@ info:
 servers:
   - url: /api/v1
 paths:
+  # The probe endpoints sit at the root rather than under the product API. They are
+  # consumed by the container healthcheck and by the deployment, not by a client, so they
+  # override the document's server rather than being described as product paths.
   /health/live:
+    servers:
+      - url: /
     get:
       operationId: healthLive
       responses:
         "200": {description: Alive}
   /health/ready:
+    servers:
+      - url: /
     get:
       operationId: healthReady
       responses:
@@ -19,19 +26,218 @@ paths:
   /auth/register:
     post:
       operationId: register
+      summary: Create a user account
+      description: |
+        Does not sign the account in. The session is issued by /auth/login, so there is
+        one place that issues credentials.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RegisterRequest"}
       responses:
-        "201": {description: Registered}
+        "201":
+          description: Registered
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [user]
+                        properties:
+                          user: {$ref: "#/components/schemas/User"}
+        "409":
+          description: The address is already registered
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+        "422":
+          description: A field is invalid
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+        "429":
+          description: Too many attempts from this address
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
   /auth/login:
     post:
       operationId: login
+      summary: Sign in as a user
+      description: |
+        On success the session cookie is set and the CSRF token is returned in the body.
+        The token cannot be read from the cookie, which is HttpOnly, so the body is the
+        only way a client can obtain it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LoginRequest"}
       responses:
-        "200": {description: Logged in}
-        "401": {description: Invalid credentials}
+        "200":
+          description: Signed in
+          headers:
+            Set-Cookie:
+              description: The session cookie. HttpOnly, SameSite=Lax, Secure outside development.
+              schema: {type: string}
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: {$ref: "#/components/schemas/UserSession"}
+        "401":
+          description: |
+            Invalid credentials. Returned identically for a wrong password and an unknown
+            address, so the endpoint does not disclose whether an account exists.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+        "403":
+          description: The account is suspended
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+        "429":
+          description: Too many attempts from this address or against this account
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: End the current user session
+      description: Requires the X-CSRF-Token header of the session being ended.
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      responses:
+        "204": {description: Signed out}
+        "401":
+          description: No session
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+        "403":
+          description: The CSRF token is missing or wrong
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
   /auth/me:
     get:
       operationId: getCurrentUser
+      summary: The authenticated user
+      description: |
+        Returns the CSRF token as well, which is how a reloaded page recovers it without a
+        second endpoint.
       responses:
-        "200": {description: Current user}
+        "200":
+          description: The current user
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: {$ref: "#/components/schemas/UserSession"}
+        "401":
+          description: No session
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+  /admin/auth/login:
+    post:
+      operationId: adminLogin
+      summary: Sign in as an administrator
+      description: |
+        Issues an administrator session in its own cookie. The customer and administrator
+        credential spaces are separate in cookie name, storage namespace and subject type,
+        so a customer session cannot authenticate an administrative endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LoginRequest"}
+      responses:
+        "200":
+          description: Signed in
+          headers:
+            Set-Cookie:
+              description: The administrator session cookie.
+              schema: {type: string}
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: {$ref: "#/components/schemas/AdminSession"}
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+        "403":
+          description: The account is suspended
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+        "429":
+          description: Too many attempts
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+  /admin/auth/logout:
+    post:
+      operationId: adminLogout
+      summary: End the current administrator session
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      responses:
+        "204": {description: Signed out}
+        "401":
+          description: No session
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+        "403":
+          description: The CSRF token is missing or wrong
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+  /admin/auth/me:
+    get:
+      operationId: adminGetCurrent
+      summary: The authenticated administrator, with effective permissions
+      responses:
+        "200":
+          description: The current administrator
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data: {$ref: "#/components/schemas/AdminSession"}
+        "401":
+          description: No administrator session
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+        "403":
+          description: The account is suspended
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
   /products:
     get:
       operationId: listProducts
@@ -129,7 +335,112 @@ components:
       in: path
       required: true
       schema: {type: string, format: uuid}
+    CSRFToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: |
+        The synchroniser token issued with the session (ADR-004). Required on every
+        state-changing request and ignored on safe ones. A header rather than a form field
+        or a second cookie: a cross-site form post cannot set a custom header without
+        provoking a preflight, and a token read from a cookie would be accepted from a
+        channel an attacker can also write to.
+      schema: {type: string}
   schemas:
+    SuccessEnvelope:
+      type: object
+      required: [success, data, request_id]
+      properties:
+        success: {type: boolean, const: true}
+        data: {type: object}
+        request_id: {type: string}
+    ErrorEnvelope:
+      type: object
+      required: [success, error, request_id]
+      properties:
+        success: {type: boolean, const: false}
+        request_id: {type: string}
+        error:
+          type: object
+          required: [code, message_key]
+          properties:
+            code:
+              type: string
+              description: A stable machine-readable identifier.
+              enum:
+                - INTERNAL_ERROR
+                - VALIDATION_FAILED
+                - UNAUTHORIZED
+                - FORBIDDEN
+                - NOT_FOUND
+                - METHOD_NOT_ALLOWED
+                - CONFLICT
+                - RATE_LIMITED
+                - REQUEST_TIMEOUT
+                - SERVICE_UNAVAILABLE
+            message_key:
+              type: string
+              description: |
+                An i18n key, never a sentence. The client localises it, so no
+                user-visible text is baked into a response. Field-level validation
+                failures use `errors.invalid_<field>`.
+            details:
+              type: object
+              description: Non-localisable structured context, such as the field that failed.
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string, minLength: 12}
+        locale:
+          type: string
+          enum: [zh-CN, en-US]
+          description: Defaults to zh-CN when omitted.
+        timezone: {type: string}
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: {type: string}
+        password: {type: string}
+    User:
+      type: object
+      required: [id, email, status, locale, timezone]
+      properties:
+        id: {type: string, format: uuid}
+        email: {type: string}
+        status: {type: string, enum: [active, suspended]}
+        locale: {type: string, enum: [zh-CN, en-US]}
+        timezone: {type: string}
+    Admin:
+      type: object
+      required: [id, email, status, permissions]
+      properties:
+        id: {type: string, format: uuid}
+        email: {type: string}
+        display_name: {type: string}
+        status: {type: string, enum: [active, suspended]}
+        permissions:
+          type: array
+          items: {type: string}
+          description: |
+            The effective set, resolved for this request. The client uses it to decide
+            what to offer; enforcement stays on the backend (docs/14).
+    UserSession:
+      type: object
+      required: [user, csrf_token, expires_at]
+      properties:
+        user: {$ref: "#/components/schemas/User"}
+        csrf_token: {type: string}
+        expires_at: {type: string, format: date-time}
+    AdminSession:
+      type: object
+      required: [admin, csrf_token, expires_at]
+      properties:
+        admin: {$ref: "#/components/schemas/Admin"}
+        csrf_token: {type: string}
+        expires_at: {type: string, format: date-time}
     OperationAccepted:
       type: object
       required: [success, data, request_id]

@@ -40,12 +40,26 @@
 > `bash scripts/verify-local.sh` 覆盖。架构决策见 `ADR-001` / `ADR-002` / `ADR-003`。
 
 ## Phase 1 — Identity / RBAC
-- [ ] users/admins
-- [ ] independent sessions
-- [ ] roles/permissions
-- [ ] CSRF/rate limit
-- [ ] audit foundation
-- [ ] zh-CN/en-US
+- [x] users/admins
+- [x] independent sessions
+- [x] roles/permissions
+- [x] CSRF/rate limit
+- [x] audit foundation
+- [x] zh-CN/en-US
+
+> **状态：实现完成；库表部分已由 CI 实证，HTTP 面待 CI 复验。**
+>
+> `0002_identity` / `0003_identity_rbac_seed` 已在真实 PostgreSQL 上前滚+回滚
+> （CI `backend-integration`，`migrations applied, version: 3`），身份表与种子数据
+> 由 Gate 断言。
+>
+> 认证 HTTP 面（`/auth/*`、`/admin/auth/*`）在本地 32 项检查全绿，其中
+> `internal/httpapi` 覆盖处理器与中间件链、`internal/authmw` 覆盖会话/CSRF/权限/限流。
+> Redis 会话存储与限流计数的真实往返由 `TEST_REDIS_URL` 门控的集成测试覆盖，只在 CI 执行。
+>
+> **Phase 1 未定义任何页面**（属 Phase 8/9）。i18n 只补了错误键。
+>
+> 决策见 `docs/adr/ADR-004-identity-sessions-rbac.md`。
 
 ## Phase 2 — Commerce / Finance
 - [ ] products/plans

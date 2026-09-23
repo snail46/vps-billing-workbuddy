@@ -43,6 +43,25 @@ type Config struct {
 	UserWebOrigin  string `env:"USER_WEB_ORIGIN" envDefault:"http://localhost:3000"`
 	AdminWebOrigin string `env:"ADMIN_WEB_ORIGIN" envDefault:"http://localhost:3001"`
 
+	// SessionCookieSecure forces the Secure attribute on the session cookies.
+	//
+	// Left unset it follows APP_ENV, which is what makes the default right in both
+	// places: production is always Secure, while development over plain HTTP works
+	// without every developer having to remember a flag. A pointer rather than a bool
+	// because "unset" and "explicitly false" have to be distinguishable — the second
+	// is a deliberate, and dangerous, choice.
+	SessionCookieSecure *bool `env:"SESSION_COOKIE_SECURE"`
+
+	// Authentication attempt budgets, per client address and per submitted account.
+	//
+	// The address budget is the larger of the two because one address is routinely a
+	// university, an office or a mobile carrier gateway behind which many unrelated
+	// people sign in.
+	RateLimitLoginPerIP      int           `env:"RATE_LIMIT_LOGIN_PER_IP" envDefault:"20"`
+	RateLimitLoginPerAccount int           `env:"RATE_LIMIT_LOGIN_PER_ACCOUNT" envDefault:"5"`
+	RateLimitRegisterPerIP   int           `env:"RATE_LIMIT_REGISTER_PER_IP" envDefault:"10"`
+	RateLimitWindow          time.Duration `env:"RATE_LIMIT_WINDOW" envDefault:"15m"`
+
 	DatabaseURL         string        `env:"DATABASE_URL,required"`
 	DBMaxConns          int32         `env:"DB_MAX_CONNS" envDefault:"10"`
 	DBMinConns          int32         `env:"DB_MIN_CONNS" envDefault:"0"`
@@ -126,7 +145,36 @@ func (c Config) Validate() error {
 		return fmt.Errorf("config: WORKER_TICK_INTERVAL must be positive, got %s", c.WorkerTickInterval)
 	}
 
+	for field, value := range map[string]int{
+		"RATE_LIMIT_LOGIN_PER_IP":      c.RateLimitLoginPerIP,
+		"RATE_LIMIT_LOGIN_PER_ACCOUNT": c.RateLimitLoginPerAccount,
+		"RATE_LIMIT_REGISTER_PER_IP":   c.RateLimitRegisterPerIP,
+	} {
+		if value < 1 {
+			return fmt.Errorf("config: %s must be at least 1, got %d", field, value)
+		}
+	}
+	if c.RateLimitWindow <= 0 {
+		return fmt.Errorf("config: RATE_LIMIT_WINDOW must be positive, got %s", c.RateLimitWindow)
+	}
+
+	if c.IsProduction() && c.SessionCookieSecure != nil && !*c.SessionCookieSecure {
+		return fmt.Errorf("config: SESSION_COOKIE_SECURE=false is not permitted when APP_ENV is %s", EnvProduction)
+	}
+
 	return nil
+}
+
+// SecureCookies reports whether session cookies carry the Secure attribute.
+//
+// Production is refused a false value rather than merely defaulting to true: a
+// session cookie sent over plain HTTP is readable by anyone on the path, so an
+// explicit opt-out in production is a configuration error, not a preference.
+func (c Config) SecureCookies() bool {
+	if c.IsProduction() {
+		return true
+	}
+	return c.SessionCookieSecure != nil && *c.SessionCookieSecure
 }
 
 func (c Config) validateEnv() error {

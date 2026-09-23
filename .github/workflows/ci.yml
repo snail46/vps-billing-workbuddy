@@ -149,10 +149,17 @@ jobs:
 
       # The integration tier runs here and is skipped locally, where no database
       # is available (see ADR-003).
+      #
+      # Redis is part of it because the session store is where every authenticated
+      # request reads its credential from. Its behaviour — a record surviving a
+      # round trip, an expired one being refused, revocation reaching every
+      # session of a subject — cannot be established against a fake, and a fake
+      # plus a real store that disagree is worse than no test at all.
       - name: integration tests
         working-directory: backend
         env:
           TEST_DATABASE_URL: postgres://vps_billing:vps_billing@localhost:5432/vps_billing?sslmode=disable
+          TEST_REDIS_URL: redis://localhost:6379/0
         run: go test -count=1 ./...
 
   frontend:

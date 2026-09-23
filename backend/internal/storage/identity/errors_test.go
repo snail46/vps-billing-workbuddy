@@ -19,18 +19,28 @@ import (
 
 func TestMapLookupErrorSeparatesAbsenceFromFailure(t *testing.T) {
 	// Absence is a fact the service acts on: it decides what a caller may learn.
-	if err := mapLookupError(pgx.ErrNoRows); !errors.Is(err, identity.ErrUserNotFound) {
+	if err := mapLookupError(pgx.ErrNoRows, identity.ErrUserNotFound); !errors.Is(err, identity.ErrUserNotFound) {
 		t.Errorf("ErrNoRows mapped to %v", err)
 	}
 	// Wrapped, too: the driver does not promise to return it bare.
-	if err := mapLookupError(fmt.Errorf("query: %w", pgx.ErrNoRows)); !errors.Is(err, identity.ErrUserNotFound) {
+	if err := mapLookupError(fmt.Errorf("query: %w", pgx.ErrNoRows), identity.ErrUserNotFound); !errors.Is(err, identity.ErrUserNotFound) {
 		t.Errorf("a wrapped ErrNoRows mapped to %v", err)
+	}
+
+	// The two credential spaces have different not-found errors, and each caller gets
+	// its own. One shared error would leave the service unable to say which space a
+	// failure came from.
+	if err := mapLookupError(pgx.ErrNoRows, identity.ErrAdminNotFound); !errors.Is(err, identity.ErrAdminNotFound) {
+		t.Errorf("an admin lookup mapped to %v", err)
+	}
+	if err := mapLookupError(pgx.ErrNoRows, identity.ErrAdminNotFound); errors.Is(err, identity.ErrUserNotFound) {
+		t.Error("an admin lookup reported a missing user")
 	}
 
 	// A broken connection is not "no such account". Collapsing the two would make the
 	// service tell a caller their credentials are wrong when the database is down.
 	failure := errors.New("connection reset")
-	mapped := mapLookupError(failure)
+	mapped := mapLookupError(failure, identity.ErrUserNotFound)
 	if errors.Is(mapped, identity.ErrUserNotFound) {
 		t.Error("a connection failure was reported as a missing account")
 	}
