@@ -102,6 +102,28 @@ runtime: `gofmt`/`go vet`/`go build`/unit tests, frontend `typecheck`/`lint`/
 phase states explicitly which checks were executed locally and which are
 CI-only — see `docs/18-TEST-PLAN.md` integration tier.
 
+#### Build-context completeness is checked without a container runtime
+
+A Docker build stage sees only what its Dockerfile `COPY`s. A file the build
+reads but the Dockerfile never copies is therefore **invisible to every local
+check**: the host build passes and only the image build fails, in a job whose
+logs require authentication to read. This was not hypothetical — it is how the
+Gate first failed, with `frontend/tsconfig.base.json` absent from both web
+images, so `tsc` aborted with `TS5083` before checking a single file.
+
+`scripts/check-docker-context.py` closes that gap. It parses the `COPY`
+instructions out of a Dockerfile's build stage, stages exactly those files, and
+runs the same `tsc --noEmit` the image build runs. It derives the file list from
+the Dockerfile rather than hardcoding one, so it follows the Dockerfile instead
+of drifting from it. It is wired into `scripts/verify-local.sh`, and its failure
+path is itself verified: against the pre-fix `COPY` set it reproduces `TS5083`
+and exits non-zero.
+
+Consequence for the CI-only surface: the *set of failures that can only be
+discovered on a runner* is now smaller than "anything in the image build" — it is
+limited to container-runtime semantics (start order, healthchecks, port binding,
+`npm ci` inside the image) rather than build-input completeness.
+
 ### 4. Dependency registries
 
 Registry access is environment-specific, so it is configured where it belongs and
@@ -175,3 +197,5 @@ authoritative, executable environment.
 - `backend-integration` job: PostgreSQL 17 + Redis 8 service containers;
   migrations apply forward and roll back; `TEST_DATABASE_URL`-gated tests run.
 - `frontend` job: install, typecheck, lint, build.
+- `scripts/check-docker-context.py`, run locally by `scripts/verify-local.sh`: the
+  build stage of each web image type-checks from its declared `COPY` set.

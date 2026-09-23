@@ -19,6 +19,9 @@ dist/
 npm-debug.log*
 .vite/
 
+# Staging tree used by scripts/check-docker-context.py
+.docker-context-check/
+
 # Editors / OS
 .idea/
 .vscode/

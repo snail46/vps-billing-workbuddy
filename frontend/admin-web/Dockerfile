@@ -14,6 +14,13 @@ WORKDIR /app
 
 COPY .npmrc ./
 
+# The shared TypeScript configuration. `tsc` resolves `extends` relative to the
+# tsconfig file that declares it, so `admin-web/tsconfig.json` reaching for
+# `../tsconfig.base.json` requires that file to exist inside the image. Without
+# it the build aborts with TS5083 before checking a single source file, and every
+# component then cascades into TS6142 ("--jsx is not set").
+COPY tsconfig.base.json ./
+
 COPY package.json package-lock.json ./
 COPY shared/package.json ./shared/
 COPY user-web/package.json ./user-web/

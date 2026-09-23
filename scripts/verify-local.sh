@@ -53,6 +53,10 @@ require() {
 require go
 require npm
 
+# Optional. Used for the configuration checks that would otherwise only run in
+# CI, so their absence is reported rather than silently skipped.
+python_bin="$(command -v python3 || command -v python || true)"
+
 # ---------------------------------------------------------------------------
 section "Backend"
 # ---------------------------------------------------------------------------
@@ -92,6 +96,23 @@ run "npm run lint" npm run lint
 run "npm test" npm test
 run "npm run build" npm run build
 
+# A Docker build stage sees only what its Dockerfile COPYs. A file the build
+# reads but the Dockerfile never copies therefore passes every check above and
+# fails only inside the image — which is how the Phase 0 Gate first broke, with
+# tsconfig.base.json missing and `tsc` aborting with TS5083. This reproduces each
+# image's type-check from the COPY set the Dockerfile actually declares.
+if [ -n "$python_bin" ]; then
+  # Relative paths on purpose, for the same reason as the yaml check below: a
+  # bash-style path such as /c/... is not resolvable by a native interpreter on
+  # Windows, which reads it as C:\c\... and exits 2 without running anything.
+  for app in user-web admin-web; do
+    run "docker build context type-checks $app" \
+      "$python_bin" ../scripts/check-docker-context.py . "$app/Dockerfile" "$app"
+  done
+else
+  skip "docker build context (no python interpreter)"
+fi
+
 cd "$repo_root" || exit 1
 
 # ---------------------------------------------------------------------------
@@ -99,8 +120,7 @@ section "Configuration syntax"
 # ---------------------------------------------------------------------------
 # Static validation only. CI performs the authoritative `docker compose config -q`
 # check, which validates compose semantics rather than just YAML syntax.
-if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
-  python_bin="$(command -v python3 || command -v python)"
+if [ -n "$python_bin" ]; then
   # Relative paths on purpose: this script has already changed into the
   # repository root, and a bash-style path such as /c/... is not resolvable by a
   # native interpreter on Windows.

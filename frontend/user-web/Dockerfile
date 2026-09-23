@@ -16,6 +16,13 @@ WORKDIR /app
 # registry as local development and CI.
 COPY .npmrc ./
 
+# The shared TypeScript configuration. `tsc` resolves `extends` relative to the
+# tsconfig file that declares it, so `user-web/tsconfig.json` reaching for
+# `../tsconfig.base.json` requires that file to exist inside the image. Without
+# it the build aborts with TS5083 before checking a single source file, and every
+# component then cascades into TS6142 ("--jsx is not set").
+COPY tsconfig.base.json ./
+
 # Workspace manifests are copied ahead of sources so the dependency layer is
 # cached independently of application code.
 COPY package.json package-lock.json ./

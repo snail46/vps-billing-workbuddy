@@ -7,3 +7,7 @@ node_modules
 **/*.tsbuildinfo
 .vite
 npm-debug.log*
+
+# Staging directory of scripts/check-docker-context.py. It is removed after each
+# run; ignoring it keeps a crashed run from being copied into the next image.
+.docker-context-check
