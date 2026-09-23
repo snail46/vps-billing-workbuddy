@@ -5,11 +5,22 @@
 // starting. docs/17-DEPLOYMENT.md requires production to use versioned
 // migrations only.
 //
+// Streams are separated deliberately:
+//
+//	stdout  the command's result — the schema version, one number per line
+//	stderr  diagnostics, as structured log records
+//
+// A caller must be able to read the result with a plain command substitution,
+// independently of LOG_LEVEL and of the configured log format. Mixing the two on
+// stdout would make the output unparseable, and deriving the result from a log
+// record at INFO level would make it disappear the moment logging is quietened.
+//
 // Exit codes: 0 success, 1 migration failure, 2 usage error.
 package main
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strconv"
@@ -24,7 +35,7 @@ const usage = `usage: migrate <command> [arguments]
 commands:
   up                 apply all pending migrations
   down <steps>       roll back <steps> migrations (a count is mandatory)
-  version            print the current schema version
+  version            print the current schema version to stdout
   force <version>    record <version> without running migrations;
                      only for clearing a dirty state after manual repair
 `
@@ -34,6 +45,13 @@ const (
 	exitFailure = 1
 	exitUsage   = 2
 )
+
+// schemaVersionSource is the part of the migration runner that reporting
+// depends on. Depending on the narrow interface rather than on *migrate.Runner
+// keeps the result-reporting rules unit-testable without a database.
+type schemaVersionSource interface {
+	Version() (version uint, dirty bool, err error)
+}
 
 func main() {
 	os.Exit(run())
@@ -51,7 +69,8 @@ func run() int {
 		return exitFailure
 	}
 
-	logger, err := logging.New(cfg.LogLevel, cfg.LogFormat, os.Stdout)
+	// Diagnostics go to stderr so that stdout carries only the result.
+	logger, err := logging.New(cfg.LogLevel, cfg.LogFormat, os.Stderr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "startup failed: %v\n", err)
 		return exitFailure
@@ -88,7 +107,7 @@ func runUp(runner *migrate.Runner, logger *slog.Logger) int {
 		logger.Error("migration up failed", slog.String("error", err.Error()))
 		return exitFailure
 	}
-	return reportVersion(runner, logger, "migrations applied")
+	return reportVersion(runner, os.Stdout, logger, "migrations applied")
 }
 
 func runDown(runner *migrate.Runner, logger *slog.Logger, args []string) int {
@@ -109,11 +128,11 @@ func runDown(runner *migrate.Runner, logger *slog.Logger, args []string) int {
 		logger.Error("migration down failed", slog.String("error", err.Error()))
 		return exitFailure
 	}
-	return reportVersion(runner, logger, "migrations rolled back")
+	return reportVersion(runner, os.Stdout, logger, "migrations rolled back")
 }
 
 func runVersion(runner *migrate.Runner, logger *slog.Logger) int {
-	return reportVersion(runner, logger, "current schema version")
+	return reportVersion(runner, os.Stdout, logger, "current schema version")
 }
 
 func runForce(runner *migrate.Runner, logger *slog.Logger, args []string) int {
@@ -137,19 +156,25 @@ func runForce(runner *migrate.Runner, logger *slog.Logger, args []string) int {
 	return exitOK
 }
 
-// reportVersion reads back the recorded version after a change, so the command's
-// output states what the database actually contains rather than what was
-// requested.
-func reportVersion(runner *migrate.Runner, logger *slog.Logger, message string) int {
-	version, dirty, err := runner.Version()
+// reportVersion writes the recorded schema version to the result stream and
+// returns the exit code for a migration change.
+//
+// The version is written to the result stream rather than only logged, so a
+// caller never has to parse a log record to learn it — the failure mode that made
+// a CI assertion break the moment logging was quietened to warn. A dirty schema
+// is reported through the exit code as well as the log, because it requires
+// operator intervention and must not be mistaken for success.
+func reportVersion(source schemaVersionSource, out io.Writer, logger *slog.Logger, message string) int {
+	version, dirty, err := source.Version()
 	if err != nil {
 		logger.Error("cannot read schema version", slog.String("error", err.Error()))
 		return exitFailure
 	}
 
+	// Exactly one number, so `version="$(migrate version)"` yields it directly.
+	fmt.Fprintf(out, "%d\n", version)
+
 	if dirty {
-		// A dirty schema means a migration failed part-way and requires operator
-		// intervention. Reporting success here would hide a broken database.
 		logger.Error("schema is in a dirty state and needs manual repair",
 			slog.Uint64("version", uint64(version)))
 		return exitFailure

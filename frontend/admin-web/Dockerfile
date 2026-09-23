@@ -1,8 +1,11 @@
+# syntax=docker/dockerfile:1
+
 # Build context is the `frontend` directory, not this one: the application
 # depends on the sibling `shared` workspace, and npm needs every workspace's
 # package.json to resolve the lock file.
-
-# syntax=docker/dockerfile:1
+#
+# The syntax directive must be the FIRST line. BuildKit only reads it there and
+# silently ignores it anywhere else, so a leading comment quietly disables it.
 
 # ---- build -------------------------------------------------------------------
 FROM node:22-alpine AS build

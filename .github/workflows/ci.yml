@@ -124,18 +124,21 @@ jobs:
         run: go run ./cmd/migrate up
 
       # Asserts through the migration binary itself rather than through psql, so
-      # this step does not depend on a client being present on the runner. A dirty
-      # schema makes `migrate version` exit non-zero, so the exit code carries
-      # part of the assertion.
+      # this step does not depend on a client being present on the runner.
+      #
+      # The version is read from stdout, which carries the command's *result*.
+      # It must not be derived from a log record: at LOG_LEVEL=warn an INFO record
+      # is suppressed, which is precisely how this assertion first failed.
+      # Diagnostics go to stderr.
       - name: Assert the schema version was recorded
         working-directory: backend
         run: |
-          output="$(go run ./cmd/migrate version 2>&1)"
-          echo "$output"
-          echo "$output" | grep -q '"version":1' || {
-            echo "::error::expected the schema to be at version 1"
+          version="$(go run ./cmd/migrate version)"
+          echo "reported schema version: '${version}'"
+          if [ "${version}" != "1" ]; then
+            echo "::error::expected the schema to be at version 1, got '${version}'"
             exit 1
-          }
+          fi
 
       # The integration tier runs here and is skipped locally, where no database
       # is available (see ADR-003).
@@ -213,13 +216,47 @@ jobs:
           ADMIN_WEB_ORIGIN=http://localhost:3001
           EOF
 
+      # Facts about the runtime, recorded before anything is pulled or built so
+      # that a capacity or version problem is distinguishable from a build error.
+      - name: Docker environment
+        run: |
+          docker version
+          docker compose version
+          df -h / | tail -1
+          df -h /var/lib/docker 2>/dev/null | tail -1 || true
+
       # The single command the Gate is defined by.
+      #
+      # `--progress plain` keeps the output line-oriented, so it can be replayed as
+      # annotations. Downloading this job's log requires authentication, while
+      # annotations on a public repository are readable without a token; publishing
+      # the failure detail as annotations is what makes a red Gate diagnosable
+      # without a human copying the log out of a browser.
       - name: Start the foundation environment
         run: |
-          docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
+          set -o pipefail
+
+          if docker compose --env-file .env --progress plain \
+               -f deploy/docker-compose.yml up -d --build 2>&1 | tee compose-up.log; then
+            exit 0
+          fi
+
+          tail -n 20 compose-up.log | while IFS= read -r line; do
+            # Strip carriage returns, then escape `%`: it opens an escape sequence
+            # in the annotation payload and would corrupt the message.
+            line="${line//$'\r'/}"
+            line="${line//'%'/'%25'}"
+            if [ -n "$line" ]; then
+              echo "::error::${line:0:500}"
+            fi
+          done
+          echo "::error::docker compose up failed; its last lines are annotated above"
+          exit 1
 
       - name: Wait for the API to report live
         run: |
+          compose="docker compose --env-file .env -f deploy/docker-compose.yml"
+
           for attempt in $(seq 1 60); do
             if curl -fsS -o /dev/null http://localhost:8080/health/live; then
               echo "liveness probe passed on attempt ${attempt}"
@@ -227,9 +264,19 @@ jobs:
             fi
             sleep 2
           done
+
+          # Publish the reason as annotations, which are readable without a token,
+          # rather than only into a log that requires authentication to download.
+          $compose ps -a | while IFS= read -r line; do
+            line="${line//$'\r'/}"; line="${line//'%'/'%25'}"
+            if [ -n "$line" ]; then echo "::error::ps: ${line:0:400}"; fi
+          done
+          $compose logs --no-color server migrate worker 2>&1 | tail -n 25 | while IFS= read -r line; do
+            line="${line//$'\r'/}"; line="${line//'%'/'%25'}"
+            if [ -n "$line" ]; then echo "::error::log: ${line:0:400}"; fi
+          done
+
           echo "::error::the API did not become live within 120s"
-          docker compose --env-file .env -f deploy/docker-compose.yml ps -a
-          docker compose --env-file .env -f deploy/docker-compose.yml logs --no-color
           exit 1
 
       - name: Assert readiness reports every dependency up
