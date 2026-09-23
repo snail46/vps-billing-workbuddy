@@ -106,9 +106,33 @@
 > CI 真实 Redis 通过）。
 
 ## Phase 3 — Subscription
-- [ ] lifecycle
-- [ ] renewal
-- [ ] due/grace/suspend/cancel
+- [x] lifecycle
+- [x] renewal
+- [x] due/grace/suspend/cancel
+
+> **状态：实现完成，本地全量验证通过；CI run #18 待复验。**
+>
+> `docs/05` 只给词表不给边，`ADR-006` 固化了转移表与续费机制：
+> 订阅在**订单结算的同事务内**诞生并激活（Payment+Order+Ledger+Outbox+Subscription）；
+> 续费由 **sweep**（`Sweep(now)`，纯函数、时钟可注入）驱动：周期结束开续费发票 →
+> **钱包余额**结算（网关支付按 schema 绑定订单，不适用）→ 同事务延长周期；
+> 未付逾期 → past_due（宽限 72h）→ suspended（14 天后 expired）；
+> `cancel_at_period_end` 在开账前被兑现；terminated 仅限管理员
+> （首个**权限门控**管理端点，`subscriptions.terminate` 由 0005 种子）。
+>
+> 重复性由 schema 回答（与 Phase 2 同一纪律）：每订阅**至多一张开放续费发票**
+> （部分唯一索引）→ 并发 sweep 收敛到同一张账单；发票条件转移仲裁付款人；
+> past_due/cancelled 转移额外要求周期确实已结束（防陈旧快照把刚续费的订阅打标）。
+> 钱包闸门是 `SELECT ... FOR UPDATE` + 余额检查，投影由分录**单次**维护
+> （初版的预扣写法会把同一笔借记入账两次——生命周期测试当场抓住）。
+>
+> 0005：sweep 索引 + 开放续费发票唯一索引 + 2 个订阅权限；Gate 断言同步扩展。
+> OpenAPI 5 条新路径 + Subscription schema；i18n 双语错误键。
+> 事件：`subscription.activated/renewed/past_due/suspended/expired/cancelled/terminated.v1`。
+>
+> 本地验证：生命周期全套（出生/钱包续费/逾期/宽限/暂停/过期/取消/并发恰一次/
+> 手动续费/终止）在真实 PostgreSQL 上全绿；全仓并发套件通过（redisx 实时过期
+> 测试仍为本地唯一分歧，CI 真实 Redis 通过）。verify-local 32 项全绿，lint 0 issues。
 
 ## Phase 4 — Infrastructure Domain
 - [ ] provider/node group/node
