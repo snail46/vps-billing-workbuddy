@@ -22,6 +22,9 @@ npm-debug.log*
 # Staging tree used by scripts/check-docker-context.py
 .docker-context-check/
 
+# CI job logs downloaded for diagnosis. They are evidence, not source.
+ci-*.log
+
 # Editors / OS
 .idea/
 .vscode/

@@ -15,6 +15,12 @@
 name: vps-billing
 
 # Shared build inputs for the three binaries produced by backend/Dockerfile.
+#
+# `migrate`, `server` and `worker` below all run this one image and select their
+# binary with `command`. The image therefore declares CMD rather than ENTRYPOINT:
+# compose *overrides* CMD with `command` but *appends* `command` to ENTRYPOINT, so
+# an ENTRYPOINT here would make every service run the server and make `migrate`
+# never exit — which blocks all its dependants.
 x-backend-build: &backend-build
   context: ../backend
   dockerfile: Dockerfile

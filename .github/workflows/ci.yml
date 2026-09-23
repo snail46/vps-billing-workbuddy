@@ -247,9 +247,23 @@ jobs:
           # anything itself.
           date +%s > compose-start.epoch
 
-          if docker compose --env-file .env --progress plain \
-               -f deploy/docker-compose.yml up -d --build 2>&1 | tee compose-up.log; then
+          # `timeout` bounds the command itself, not merely the job. `up -d` waits
+          # for its `depends_on` conditions, so a service that starts but never
+          # satisfies one — a one-shot container that never exits, for instance —
+          # blocks until something outside stops it. Failing after eight minutes
+          # with a diagnosis is far cheaper than occupying the whole job budget and
+          # then being cancelled with nothing to show for it.
+          timeout --kill-after=30 480 \
+            docker compose --env-file .env --progress plain \
+              -f deploy/docker-compose.yml up -d --build 2>&1 | tee compose-up.log
+          status="${PIPESTATUS[0]}"
+
+          if [ "$status" -eq 0 ]; then
             exit 0
+          fi
+
+          if [ "$status" -eq 124 ]; then
+            echo "::error::docker compose up did not finish within 480s: it was waiting for a container that never became ready or never exited"
           fi
 
           tail -n 20 compose-up.log | while IFS= read -r line; do

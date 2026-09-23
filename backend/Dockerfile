@@ -54,4 +54,13 @@ USER 10001:10001
 # Documented only; the published port is set by the environment that runs it.
 EXPOSE 8080
 
-ENTRYPOINT ["/app/server"]
+# CMD, deliberately not ENTRYPOINT. This image carries three binaries (server,
+# worker, migrate) and the environment selects one per service through compose's
+# `command`. Docker Compose *overrides* CMD with `command`, but it *appends*
+# `command` to ENTRYPOINT — so with ENTRYPOINT ["/app/server"] the migrate service
+# would silently run `/app/server /app/migrate up`: the API would start instead of
+# the migration, never exit, and block every service waiting on
+# `service_completed_successfully`. That is exactly how the Gate hung for 24
+# minutes. CMD keeps the convenient `docker run` default while making `command`
+# select the binary outright.
+CMD ["/app/server"]

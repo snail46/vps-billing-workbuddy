@@ -151,6 +151,17 @@ else
   skip "yaml parse (no python interpreter)"
 fi
 
+# Structural assertions about the foundation environment. They live here rather
+# than only in CI because the failure this guards against — the image declaring an
+# ENTRYPOINT while compose selects the binary with `command` — is invisible to
+# every other check and hung the Gate for 24 minutes before anyone could see it.
+if [ -n "$python_bin" ]; then
+  # A relative path, for the same reason as above.
+  run "compose structure" "$python_bin" scripts/check-compose.py
+else
+  skip "compose structure (no python interpreter)"
+fi
+
 printf '\n'
 if [ "$failures" -ne 0 ]; then
   printf '\033[31mLocal verification FAILED\033[0m\n'

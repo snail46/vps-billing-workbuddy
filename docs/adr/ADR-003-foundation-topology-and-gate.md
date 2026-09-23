@@ -57,6 +57,29 @@ Docker daemon, and both registries in use are publicly reachable from there.
   server process mutate the schema on start would put schema change on the
   request-serving path.
 
+#### One image, three roles
+
+`migrate`, `server` and `worker` all run `vps-billing-backend:local` and select
+their binary through compose's `command`. `backend/Dockerfile` therefore declares
+`CMD` and **not** `ENTRYPOINT`.
+
+That is load-bearing, not stylistic. Compose *overrides* CMD with `command`, but
+*appends* `command` to ENTRYPOINT. With `ENTRYPOINT ["/app/server"]` the migrate
+service actually ran `/app/server /app/migrate up`: the API started in place of
+the migration and never exited, and `server` and `worker` — both gated on
+`service_completed_successfully` — waited for it.
+
+The failure mode is what makes this worth recording: **nothing reported an error**.
+All images built in about 90 seconds, postgres and redis went healthy, the
+migration container started, and then the step was silent for 24 minutes until the
+run was cancelled. A wrong binary in a shared image produces no diagnostic by
+itself; the container's own command line does, which is why the Gate's digest
+prints `ps -a`.
+
+`scripts/check-compose.py` asserts both halves of the invariant — no ENTRYPOINT in
+the image, and an explicit `command` naming the binary for each service — so the
+regression cannot return unnoticed.
+
 **Reverse proxy is deferred to Phase 12.** `docs/17` lists it as a V1 deployment
 component, but it carries no Phase 0 Gate requirement, and adding an nginx hop
 would widen the Gate's failure surface without proving anything about the
@@ -95,6 +118,17 @@ compose up -d --build  →  wait for healthy  →  GET /health/live  →  GET /h
 The job fails if any step fails; there is no `continue-on-error` and no
 "assume it works" step. Phase 0 is not considered closed until this job passes on
 the pushed commit.
+
+Both the command and the job are bounded: `timeout 480` around the compose command
+and `timeout-minutes: 20` on the job. `up -d` waits for its `depends_on`
+conditions, so a service that starts but never satisfies one blocks indefinitely;
+the inner bound turns that into a fast, diagnosable failure instead of an hour of
+runner time.
+
+A digest step runs with `if: always()` and reports elapsed time, the slowest build
+steps, the tail of the compose output and container state. It runs after
+cancellation and timeout as well, because a cancelled step never reaches its own
+error handling — which is why the first hung attempt produced no evidence at all.
 
 Locally, the developer can verify everything that does not need a container
 runtime: `gofmt`/`go vet`/`go build`/unit tests, frontend `typecheck`/`lint`/
@@ -199,3 +233,7 @@ authoritative, executable environment.
 - `frontend` job: install, typecheck, lint, build.
 - `scripts/check-docker-context.py`, run locally by `scripts/verify-local.sh`: the
   build stage of each web image type-checks from its declared `COPY` set.
+- `scripts/check-compose.py`, likewise: the service set, each backend service's
+  `command`, the absence of an ENTRYPOINT in the image, the healthchecks and the
+  `service_completed_successfully` gates. Its failure path is verified by
+  reintroducing each defect and confirming it is reported.
