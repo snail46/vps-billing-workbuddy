@@ -108,8 +108,16 @@ known, so a legitimate user is not locked out by their own successful logins.
 ### 6. The permission set is data, and every admin route declares one
 
 Roles and permission keys are rows, seeded idempotently from `docs/15`. An admin's
-effective permissions are the union over their roles, resolved per request from the
-database (short TTL cache in Redis).
+effective permissions are the union over their roles, **resolved from the database
+on each request**.
+
+A Redis cache was considered and deliberately not built yet. Its only purpose would
+be to avoid one indexed query per request, and it would need invalidating from the
+role-mutation path — which does not exist until the roles screen in Phase 9. An
+invalidation path with nothing to invalidate against is a liability: it cannot be
+exercised, so its correctness is unknown exactly when it starts to matter. The
+per-request resolution also states the stronger property, that revoking a role takes
+effect on the next request rather than at the next login.
 
 Routes are registered through a helper that **requires** a permission key, so a
 handler cannot be mounted without one. A test enumerates the admin router and
