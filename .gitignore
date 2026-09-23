@@ -1,0 +1,34 @@
+# Secrets / local environment
+.env
+.env.*
+!.env.example
+
+# Go
+/backend/bin/
+*.exe
+*.exe~
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+.vite/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Tooling caches
+.golangci-lint-cache/
+
+# Local agent working memory. It is project state rather than product source, so
+# it stays on disk but out of the repository. Remove this entry if the team wants
+# to share it.
+.workbuddy/

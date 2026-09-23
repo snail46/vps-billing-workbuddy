@@ -1,0 +1,40 @@
+/*
+ * Application stylesheet.
+ *
+ * Order matters: Tailwind is imported first so that the @theme block in the
+ * shared tokens is evaluated by Tailwind and its custom properties become
+ * utilities.
+ *
+ * The relative import is used rather than the package subpath export so that
+ * resolution does not depend on Tailwind's node_modules handling.
+ */
+@import "tailwindcss";
+@import "../../shared/src/ui/tokens.css";
+
+/*
+ * Tailwind discovers classes by scanning source files. The shared package lives
+ * outside this application's directory, so it must be declared explicitly —
+ * otherwise the classes used by the shared components are never generated and
+ * the failure appears as missing styles rather than as a build error.
+ */
+@source "../../shared/src";
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-surface-muted);
+  color: var(--color-content);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    "Noto Sans SC",
+    "Microsoft YaHei",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}

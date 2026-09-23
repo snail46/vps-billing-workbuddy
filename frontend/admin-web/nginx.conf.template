@@ -1,0 +1,51 @@
+# nginx configuration for the built admin web client.
+#
+# This is a template. The official nginx image substitutes the environment
+# variables it finds defined at container start and writes the result to
+# /etc/nginx/conf.d/default.conf, so API_ORIGIN is an environment value rather
+# than something frozen into the image.
+#
+# The admin console is deliberately a separate deployment from the user client
+# (docs/14-SECURITY.md requires the two surfaces to be isolated), and it is
+# additionally forbidden from being indexed.
+
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    server_tokens off;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    # Admin pages must never appear in a search index.
+    add_header X-Robots-Tag "noindex, nofollow" always;
+
+    # Security headers are declared once, at server level, on purpose.
+    #
+    # nginx does NOT inherit add_header into a location block that declares an
+    # add_header of its own, so no location below adds one. Response caching is
+    # expressed with `expires`, which sets Cache-Control through a different
+    # mechanism and therefore cannot break this inheritance.
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' ${API_ORIGIN}; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+
+    location /assets/ {
+        expires 1y;
+        try_files $uri =404;
+    }
+
+    location = /index.html {
+        expires -1;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

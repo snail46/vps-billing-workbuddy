@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vps_billing}
+      POSTGRES_USER: ${POSTGRES_USER:-vps_billing}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vps_billing} -d ${POSTGRES_DB:-vps_billing}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    env_file: [../.env]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  worker:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    command: ["/app/worker"]
+    env_file: [../.env]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  user-web:
+    build:
+      context: ..
+      dockerfile: frontend/user-web/Dockerfile
+    depends_on: [server]
+
+  admin-web:
+    build:
+      context: ..
+      dockerfile: frontend/admin-web/Dockerfile
+    depends_on: [server]
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,52 @@
+/*
+ * Design tokens (docs/12-DESIGN-SYSTEM.md).
+ *
+ * The semantic palette is defined once here and consumed by both applications,
+ * so a change to the design system is a change to this file.
+ *
+ * Consumers must import Tailwind first:
+ *
+ *   @import "tailwindcss";
+ *   @import "../../shared/src/ui/tokens.css";
+ *
+ * Tailwind v4 reads the @theme block and derives utilities from it, which is why
+ * the tokens are plain custom properties rather than a JavaScript object.
+ *
+ * Note that colour is never the only carrier of meaning (docs/12): the status
+ * components pair these colours with an explicit glyph and a translated label.
+ */
+@theme {
+  /* Surfaces and text. */
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8fafc;
+  --color-surface-sunken: #f1f5f9;
+  --color-border-subtle: #e2e8f0;
+  --color-content: #0f172a;
+  --color-content-muted: #475569;
+  --color-content-subtle: #64748b;
+
+  /* Success / healthy. */
+  --color-status-success: #15803d;
+  --color-status-success-surface: #f0fdf4;
+  --color-status-success-border: #bbf7d0;
+
+  /* Info / progress. */
+  --color-status-info: #1d4ed8;
+  --color-status-info-surface: #eff6ff;
+  --color-status-info-border: #bfdbfe;
+
+  /* Waiting / warning. */
+  --color-status-warning: #b45309;
+  --color-status-warning-surface: #fffbeb;
+  --color-status-warning-border: #fde68a;
+
+  /* Error / danger. */
+  --color-status-danger: #b91c1c;
+  --color-status-danger-surface: #fef2f2;
+  --color-status-danger-border: #fecaca;
+
+  /* Inactive / stopped. */
+  --color-status-neutral: #475569;
+  --color-status-neutral-surface: #f1f5f9;
+  --color-status-neutral-border: #cbd5e1;
+}

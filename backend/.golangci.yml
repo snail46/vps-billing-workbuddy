@@ -1,0 +1,71 @@
+# golangci-lint configuration (schema version 2).
+#
+# Pinned to the schema used by the version installed in CI so that the lint job
+# cannot fail on a configuration mismatch.
+
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gocritic
+    - gosec
+    - noctx
+    - nolintlint
+    - revive
+    - unconvert
+    - unparam
+    - whitespace
+
+  settings:
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        # hugeParam fires on signatures that are fixed by an interface, most
+        # notably slog.Handler.Handle(ctx, slog.Record), which cannot be changed.
+        # The other hits are small read-only value types (Config, Deps, Report)
+        # where value semantics are intentional.
+        - hugeParam
+    revive:
+      # An explicit rule set rather than revive's defaults, so the linter's
+      # behaviour is a decision recorded here instead of a property of whichever
+      # revive version CI happens to resolve.
+      rules:
+        - name: indent-error-flow
+        - name: unused-parameter
+        - name: unused-receiver
+
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+    rules:
+      # Test files legitimately repeat setup, ignore some unparam findings and
+      # use fixtures that trip gosec's heuristics. noctx and the unused-parameter
+      # rule are excluded because http.HandlerFunc signatures require parameters
+      # a given test does not use, and tests have no request-cancellation
+      # concern to get wrong.
+      - path: _test\.go
+        linters:
+          - gosec
+          - unparam
+          - gocritic
+          - noctx
+          - revive
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      # Keeps this module's own packages in a separate trailing group, so an
+      # import block makes the dependency direction visible at a glance.
+      local-prefixes:
+        - github.com/snail46/vps-billing-workbuddy/backend

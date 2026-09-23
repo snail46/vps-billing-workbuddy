@@ -1,0 +1,163 @@
+openapi: 3.1.0
+info:
+  title: VPS Billing Platform API
+  version: 1.0.0
+servers:
+  - url: /api/v1
+paths:
+  /health/live:
+    get:
+      operationId: healthLive
+      responses:
+        "200": {description: Alive}
+  /health/ready:
+    get:
+      operationId: healthReady
+      responses:
+        "200": {description: Ready}
+        "503": {description: Not ready}
+  /auth/register:
+    post:
+      operationId: register
+      responses:
+        "201": {description: Registered}
+  /auth/login:
+    post:
+      operationId: login
+      responses:
+        "200": {description: Logged in}
+        "401": {description: Invalid credentials}
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      responses:
+        "200": {description: Current user}
+  /products:
+    get:
+      operationId: listProducts
+      responses:
+        "200": {description: Products}
+  /orders:
+    get:
+      operationId: listOrders
+      responses:
+        "200": {description: Orders}
+    post:
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_id, quantity]
+              properties:
+                plan_id: {type: string, format: uuid}
+                quantity: {type: integer, minimum: 1}
+      responses:
+        "201": {description: Created}
+        "422": {description: Validation failure}
+  /instances:
+    get:
+      operationId: listInstances
+      responses:
+        "200": {description: Instances}
+  /instances/{id}:
+    get:
+      operationId: getInstance
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": {description: Instance}
+        "404": {description: Not found}
+  /instances/{id}/restart:
+    post:
+      operationId: restartInstance
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OperationAccepted"}
+        "409": {description: Conflict}
+  /instances/{id}/reinstall:
+    post:
+      operationId: reinstallInstance
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [image_id]
+              properties:
+                image_id: {type: string}
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OperationAccepted"}
+  /operations/{id}:
+    get:
+      operationId: getOperation
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Operation
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OperationResponse"}
+  /events:
+    get:
+      operationId: streamEvents
+      responses:
+        "200":
+          description: SSE
+          content:
+            text/event-stream:
+              schema: {type: string}
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+  schemas:
+    OperationAccepted:
+      type: object
+      required: [success, data, request_id]
+      properties:
+        success: {type: boolean, const: true}
+        request_id: {type: string}
+        data:
+          type: object
+          required: [operation_id, status]
+          properties:
+            operation_id: {type: string, format: uuid}
+            status: {type: string, enum: [queued]}
+    OperationResponse:
+      type: object
+      required: [success, data, request_id]
+      properties:
+        success: {type: boolean, const: true}
+        request_id: {type: string}
+        data:
+          type: object
+          required: [id, status, progress]
+          properties:
+            id: {type: string, format: uuid}
+            status:
+              type: string
+              enum: [queued, running, waiting_provider, waiting_resource, verifying, retrying, succeeded, failed, cancelled]
+            phase: {type: [string, "null"]}
+            progress: {type: integer, minimum: 0, maximum: 100}
+            message_key: {type: [string, "null"]}
+            retryable: {type: boolean}
+            error_code: {type: [string, "null"]}

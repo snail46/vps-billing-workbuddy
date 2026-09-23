@@ -1,0 +1,22 @@
+-- 0001_init — migration history root.
+--
+-- This migration intentionally contains no DDL.
+--
+-- Phase 0 owns no domain tables. Every object in the product is introduced by
+-- the phase specified to own it: identity and RBAC in Phase 1, commerce and
+-- finance in Phase 2, subscriptions in Phase 3, infrastructure in Phase 4, and
+-- so on through the roadmap in TASKS.md. Creating those tables here would
+-- collapse the per-phase history and pre-empt phases that are specified to
+-- introduce them, which is exactly the cross-phase shortcut the build
+-- instructions forbid.
+--
+-- `db/schema.sql` at the repository root remains the consolidated *reference*
+-- description of the target schema. It is documentation and is never executed.
+--
+-- Running this migration is still meaningful: it creates the schema_migrations
+-- bookkeeping table and records version 1, which is what proves the migration
+-- pipeline works end to end in CI and in the compose environment.
+--
+-- The statement below is deliberately trivial; migration tooling is happier with
+-- a non-empty script, and it makes the migration's success observable.
+SELECT 1;

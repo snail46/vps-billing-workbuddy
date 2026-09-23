@@ -1,0 +1,9 @@
+# Keeps the Docker build context small and prevents host artefacts from
+# overriding anything installed inside the image.
+node_modules
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+.vite
+npm-debug.log*

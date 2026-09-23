@@ -1,0 +1,18 @@
+# Normalize line endings to LF in the repository.
+# Windows checkouts remain usable, but committed content stays LF so that
+# Docker builds, CI and shell scripts behave identically everywhere.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+*.sh text eol=lf
+*.sql text eol=lf
+Dockerfile text eol=lf
+
+# Keep generated SQL/TS diffs collapsible in review.
+backend/internal/db/sqlc/** linguist-generated=true

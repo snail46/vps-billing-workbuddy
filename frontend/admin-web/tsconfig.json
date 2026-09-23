@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vite/client", "react", "react-dom"],
+    "paths": {
+      "@vps/shared": ["../shared/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

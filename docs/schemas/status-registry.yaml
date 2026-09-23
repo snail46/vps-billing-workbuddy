@@ -1,0 +1,51 @@
+version: 1
+
+instance:
+  running:
+    severity: success
+    zh_CN: "运行中"
+    en_US: "Running"
+    allowed_actions: [stop, restart, reinstall, renew]
+  stopped:
+    severity: neutral
+    zh_CN: "已停止"
+    en_US: "Stopped"
+    allowed_actions: [start, reinstall, renew]
+  provisioning:
+    severity: info
+    zh_CN: "正在开通"
+    en_US: "Provisioning"
+    allowed_actions: []
+  restarting:
+    severity: info
+    zh_CN: "正在重启"
+    en_US: "Restarting"
+    allowed_actions: []
+  reinstalling:
+    severity: info
+    zh_CN: "正在重装"
+    en_US: "Reinstalling"
+    allowed_actions: []
+  suspended:
+    severity: warning
+    zh_CN: "已暂停"
+    en_US: "Suspended"
+    allowed_actions: [renew]
+  unknown:
+    severity: warning
+    zh_CN: "状态未知"
+    en_US: "Unknown"
+    allowed_actions: []
+  error:
+    severity: error
+    zh_CN: "异常"
+    en_US: "Error"
+    allowed_actions: []
+
+operation:
+  queued: {severity: info, zh_CN: "等待处理", en_US: "Queued"}
+  running: {severity: info, zh_CN: "处理中", en_US: "Running"}
+  verifying: {severity: info, zh_CN: "正在确认结果", en_US: "Verifying"}
+  retrying: {severity: warning, zh_CN: "正在重试", en_US: "Retrying"}
+  succeeded: {severity: success, zh_CN: "已完成", en_US: "Completed"}
+  failed: {severity: error, zh_CN: "失败", en_US: "Failed"}

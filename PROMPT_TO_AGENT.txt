@@ -1,0 +1,15 @@
+请严格按照本仓库的 AGENTS.md 和 MASTER_PROMPT.md 施工。
+
+执行顺序：
+1. 先阅读 AGENTS.md、MASTER_PROMPT.md、TASKS.md。
+2. 阅读 docs/ 下全部 P0 文档和当前任务相关文档。
+3. 不得跨 Phase；从 TASKS.md 第一个未完成任务开始。
+4. 不得猜第三方 Provider API；实现 Provider Adapter 前核对其当前官方文档和源码。
+5. 不得修改核心领域边界：Order、Payment、Invoice、Subscription、Instance 必须分离。
+6. 所有长操作必须使用 Operation + Workflow + Worker，并通过 SSE/轮询向 UI 提供可恢复的实时状态。
+7. 所有财务变更必须通过 Ledger；Payment + Order + Ledger + Outbox 必须事务一致。
+8. 所有高危管理员操作必须 Audit。
+9. 内部代码/DB/API/状态统一英文；UI 必须同时支持 zh-CN 与 en-US，禁止硬编码用户可见文案。
+10. 每完成一个阶段必须运行 format/lint/test/typecheck/build，并汇报修改文件、测试结果、兼容影响、已知风险。
+
+现在从 TASKS.md 的 Phase 0 开始；在 Phase 0 Gate 通过前不要提前实现后续业务页面。
