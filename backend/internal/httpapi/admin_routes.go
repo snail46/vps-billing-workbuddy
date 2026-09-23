@@ -57,6 +57,12 @@ func (ar *adminRoutes) mountOn(mux chi.Router) {
 	ar.public(mux, http.MethodPost, "/auth/login", ar.api.loginAdmin)
 	ar.authenticated(mux, http.MethodPost, "/auth/logout", ar.api.logoutAdmin)
 	ar.authenticated(mux, http.MethodGet, "/auth/me", ar.api.meAdmin)
+
+	// Terminating a customer's subscription is the platform's hand, not a
+	// session's own business: it needs the permission the seed gives, and the
+	// registration below is what states that requirement where the route lives.
+	ar.guarded(mux, http.MethodPost, "/subscriptions/{subscriptionID}/terminate",
+		"subscriptions.terminate", ar.api.terminateSubscription)
 }
 
 // public registers an endpoint reachable without a session.
@@ -80,6 +86,18 @@ func (ar *adminRoutes) authenticated(mux chi.Router, method, path string, handle
 	ar.mount(mux, method, path, requirementAuthenticated, []func(http.Handler) http.Handler{
 		ar.api.auth.Sessions.RequireAdmin,
 		ar.api.auth.Sessions.RequireCSRF,
+	}, handler)
+}
+
+// guarded registers an endpoint that requires an administrator holding a specific
+// permission. The permission is declared here, as the literal the seed holds, so
+// the test that reads the seed can confirm the key exists and the test that walks
+// the router can confirm the route declared it.
+func (ar *adminRoutes) guarded(mux chi.Router, method, path, permission string, handler http.HandlerFunc) {
+	ar.mount(mux, method, path, permission, []func(http.Handler) http.Handler{
+		ar.api.auth.Sessions.RequireAdmin,
+		ar.api.auth.Sessions.RequireCSRF,
+		ar.api.auth.Sessions.RequirePermission(permission),
 	}, handler)
 }
 

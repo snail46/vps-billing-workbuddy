@@ -79,7 +79,10 @@ export const enUS: TranslationShape<typeof zhCN> = {
     invalid_plan: "That plan does not exist or is no longer on sale.",
     plan_not_purchaseable: "That plan is not available to buy right now.",
     mixed_currencies: "An order can only contain one currency.",
-    empty_order: "Choose at least one item.",
+        empty_order: "Choose at least one item.",
+    subscription_not_live: "This subscription has ended and can no longer be changed.",
+    nothing_due: "The current period has not ended yet, so there is nothing to renew.",
+    insufficient_balance: "The balance does not cover this renewal. Please top up first.",
   },
   health: {
     title: "Platform status",

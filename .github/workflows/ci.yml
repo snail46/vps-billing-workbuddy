@@ -420,8 +420,8 @@ jobs:
           roles="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c 'SELECT count(*) FROM roles;' | tr -d '\r')"
           permissions="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c 'SELECT count(*) FROM permissions;' | tr -d '\r')"
           echo "identity tables=${tables} roles=${roles} permissions=${permissions}"
-          if [ "${tables}" != "7" ] || [ "${roles}" != "5" ] || [ "${permissions}" != "27" ]; then
-            echo "::error::expected 7 identity tables, 5 roles and 27 permissions; got ${tables}, ${roles}, ${permissions}"
+          if [ "${tables}" != "7" ] || [ "${roles}" != "5" ] || [ "${permissions}" != "29" ]; then
+            echo "::error::expected 7 identity tables, 5 roles and 29 permissions (docs/15's 27 plus 0005's subscription keys); got ${tables}, ${roles}, ${permissions}"
             exit 1
           fi
 
@@ -456,10 +456,10 @@ jobs:
             exit 1
           fi
 
-          index_count="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c "SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('ux_payments_gateway_external','ux_ledger_transactions_reference','ix_outbox_events_pending');" | tr -d '\r')"
+          index_count="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c "SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('ux_payments_gateway_external','ux_ledger_transactions_reference','ix_outbox_events_pending','ix_subscriptions_sweep','ux_invoices_open_renewal');" | tr -d '\r')"
           echo "named indexes=${index_count}"
-          if [ "${index_count}" != "3" ]; then
-            echo "::error::expected 3 named indexes; got ${index_count}"
+          if [ "${index_count}" != "5" ]; then
+            echo "::error::expected 5 named indexes; got ${index_count}"
             exit 1
           fi
 

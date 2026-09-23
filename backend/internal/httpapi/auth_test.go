@@ -202,9 +202,12 @@ func testConfig() config.Config {
 		WorkerTickInterval:       30 * time.Second,
 		RateLimitLoginPerIP:      10,
 		RateLimitLoginPerAccount: 3,
-		RateLimitRegisterPerIP:   5,
-		RateLimitWindow:          15 * time.Minute,
-		PaymentFakeSecret:        testGatewaySecret,
+		// Generous, because every commerce test registers a customer from the fixture's
+		// one fixed address: the throttle is proven at its own boundary (the auth tests),
+		// not by making the whole suite trip over its own user count.
+		RateLimitRegisterPerIP: 100,
+		RateLimitWindow:        15 * time.Minute,
+		PaymentFakeSecret:      testGatewaySecret,
 	}
 }
 

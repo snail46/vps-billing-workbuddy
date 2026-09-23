@@ -204,6 +204,18 @@ func mountCommerce(v1 chi.Router, api *api) {
 	mount(v1, http.MethodPost, "/orders/{orderID}/payments", api.startPayment,
 		sessions.RequireUser, sessions.RequireCSRF)
 
+	// Subscriptions, always scoped to the session's own customer. Reading is
+	// session-only; the two writes carry the CSRF token, because they change
+	// something the customer pays for.
+	mount(v1, http.MethodGet, "/subscriptions", api.listSubscriptions,
+		sessions.RequireUser)
+	mount(v1, http.MethodGet, "/subscriptions/{subscriptionID}", api.getSubscription,
+		sessions.RequireUser)
+	mount(v1, http.MethodPost, "/subscriptions/{subscriptionID}/cancel", api.cancelSubscription,
+		sessions.RequireUser, sessions.RequireCSRF)
+	mount(v1, http.MethodPost, "/subscriptions/{subscriptionID}/renew", api.renewSubscription,
+		sessions.RequireUser, sessions.RequireCSRF)
+
 	// One route for every gateway, named by the URL parameter the handler reads. The
 	// gateways map is still what validates the name at request time — an unknown one
 	// is refused there — so the table does not have to be rebuilt per deployment.

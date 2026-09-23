@@ -167,9 +167,17 @@ type Invoice struct {
 	ID        uuid.UUID
 	InvoiceNo string
 	UserID    uuid.UUID
-	OrderID   uuid.UUID
-	Status    string
-	Amount    money.Money
+	// OrderID and SubscriptionID are the invoice's origin, and exactly one is
+	// set: the schema's `invoices_has_an_origin` CHECK refuses both empty. An
+	// order-born invoice asks for a purchase; a subscription-born one asks for
+	// the next period of an ongoing service.
+	OrderID        *uuid.UUID
+	SubscriptionID *uuid.UUID
+	Status         string
+	Amount         money.Money
+	// DueAt is when the invoice must be paid by. An order invoice is due on
+	// issue; a renewal's due date is the period's end.
+	DueAt *time.Time
 	// Items are the lines the amount is made of. They are built from the order's lines
 	// and are never edited afterwards, for the same reason the order's snapshots are
 	// not: the document and the agreement have to agree.

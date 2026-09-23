@@ -76,7 +76,10 @@ export const zhCN = {
     invalid_plan: "所选套餐不存在或已下架。",
     plan_not_purchaseable: "所选套餐当前不可购买。",
     mixed_currencies: "一份订单只能使用一种货币。",
-    empty_order: "请至少选择一件商品。",
+        empty_order: "请至少选择一件商品。",
+    subscription_not_live: "该订阅已结束，无法继续操作。",
+    nothing_due: "当前周期尚未到期，暂时无需续费。",
+    insufficient_balance: "余额不足以支付本次续费，请先充值。",
   },
   health: {
     title: "平台状态",

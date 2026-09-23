@@ -122,6 +122,46 @@ type Store interface {
 
 	// Outbox.
 	RecordOutboxEvent(ctx context.Context, event OutboxEvent) error
+
+	// The subscription surface (ADR-006). It shares the Store because activation
+	// happens inside the settlement's transaction and renewal opens invoices and
+	// moves ledger money — one transaction's writers stay behind one interface.
+	//
+	// Subscriptions.
+	CreateSubscription(ctx context.Context, s Subscription) error
+	SubscriptionByID(ctx context.Context, id uuid.UUID) (Subscription, error)
+	SubscriptionForUser(ctx context.Context, id, userID uuid.UUID) (Subscription, error)
+	ListSubscriptionsForUser(ctx context.Context, userID uuid.UUID) ([]Subscription, error)
+	SubscriptionsPastDeadline(ctx context.Context, now time.Time) ([]SweepSubscription, error)
+	// TransitionSubscription moves the row from the state the caller saw. A false
+	// result means another writer moved it first.
+	TransitionSubscription(ctx context.Context, id uuid.UUID, from, to string,
+		deadline, endedAt *time.Time, at time.Time) (bool, error)
+	// ExtendSubscription starts the next period, from any live state.
+	ExtendSubscription(ctx context.Context, id uuid.UUID,
+		periodStart, periodEnd, at time.Time) (bool, error)
+	// SetCancelAtPeriodEnd records the owner's request, scoped to the owner.
+	SetCancelAtPeriodEnd(ctx context.Context, id, userID uuid.UUID, at time.Time) (bool, error)
+
+	// The order's lines at settlement time, without the owner scope: the
+	// settlement acts on the platform's own record.
+	OrderForSettlement(ctx context.Context, orderID uuid.UUID) (Order, error)
+
+	// Renewal invoices.
+	CreateSubscriptionInvoice(ctx context.Context, invoice Invoice) error
+	CreateSubscriptionInvoiceItems(ctx context.Context, invoiceID uuid.UUID, items []InvoiceItem) error
+	// OpenRenewalInvoiceFor reads back the invoice a lost race left open.
+	OpenRenewalInvoiceFor(ctx context.Context, subscriptionID uuid.UUID) (Invoice, error)
+	// MarkSubscriptionInvoicePaid is the renewal's settlement gate: exactly one
+	// caller moves the open invoice to `paid`, and that caller extends the period
+	// and posts the ledger movement in the same transaction.
+	MarkSubscriptionInvoicePaid(ctx context.Context, invoiceID uuid.UUID, at time.Time) (bool, error)
+
+	// LockWalletForSpend locks the customer's wallet row and returns its balance,
+	// so the caller's balance check holds against concurrent spends until the
+	// transaction ends. The projection itself is moved by the entries the poster
+	// writes in the same transaction (ADR-005) — this method only reads and locks.
+	LockWalletForSpend(ctx context.Context, userID uuid.UUID, currency money.Currency) (money.Money, error)
 }
 
 // OutboxEvent is one event waiting to be published.
@@ -239,11 +279,12 @@ func (s *Service) CreateOrder(ctx context.Context, userID uuid.UUID, requested [
 	if err != nil {
 		return Order{}, err
 	}
+	orderID := order.ID
 	invoice := Invoice{
 		ID:        uuid.New(),
 		InvoiceNo: invoiceNo,
 		UserID:    userID,
-		OrderID:   order.ID,
+		OrderID:   &orderID,
 		Status:    InvoiceOpen,
 		Amount:    order.Total,
 		// The lines say what was asked for, in the plan's own words rather than in a
@@ -484,6 +525,17 @@ func (s *Service) settle(ctx context.Context, gatewayName string, notification p
 		}
 
 		if err := tx.PayOrder(ctx, paid.OrderID, now); err != nil {
+			return err
+		}
+
+		// The subscription the order bought comes into existence here, in the
+		// same transaction as the money (ADR-006 §2). A subscription that exists
+		// is one whose money arrived.
+		order, err := tx.OrderForSettlement(ctx, paid.OrderID)
+		if err != nil {
+			return fmt.Errorf("commerce: read the settled order: %w", err)
+		}
+		if err := activateSubscriptionsFromOrder(ctx, tx, order, now); err != nil {
 			return err
 		}
 

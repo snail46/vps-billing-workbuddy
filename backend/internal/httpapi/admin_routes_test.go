@@ -81,30 +81,40 @@ func contains(values []string, want string) bool {
 	return false
 }
 
-// seededPermissions reads the permission keys out of the RBAC seed migration.
+// seededPermissions reads the permission keys out of the RBAC seed migrations.
 //
-// Reading the migration rather than a list in this file is the point: the keys a route may
+// Reading the migrations rather than a list in this file is the point: the keys a route may
 // declare are the keys the database will actually hold, and a list maintained here would
-// agree with the routes while disagreeing with the seed.
+// agree with the routes while disagreeing with the seed. Migrations, plural: 0003 seeded
+// the original vocabulary, and a later phase's migration — 0005's subscriptions.terminate —
+// adds keys the same way, so every up migration is read and each is allowed to contribute.
 func seededPermissions(t *testing.T) map[string]struct{} {
 	t.Helper()
 
-	contents, err := migrations.FS.ReadFile("0003_identity_rbac_seed.up.sql")
+	entries, err := migrations.FS.ReadDir(".")
 	if err != nil {
-		t.Fatalf("read the RBAC seed: %v", err)
+		t.Fatalf("list the migrations: %v", err)
 	}
 
 	// The permission keys are the quoted strings in the statement that inserts them. The
 	// generated identifiers beside them are not quoted, so the two cannot be confused.
-	statement := regexp.MustCompile(`(?s)INSERT INTO permissions\b[^;]*;`).Find(contents)
-	if statement == nil {
-		t.Fatal("the RBAC seed does not insert permissions")
-	}
-	quoted := regexp.MustCompile(`'([a-z_]+(?:\.[a-z_]+)+)'`).FindAllStringSubmatch(string(statement), -1)
+	statement := regexp.MustCompile(`(?s)INSERT INTO permissions\b[^;]*;`)
+	quoted := regexp.MustCompile(`'([a-z_]+(?:\.[a-z_]+)+)'`)
 
-	keys := make(map[string]struct{}, len(quoted))
-	for _, match := range quoted {
-		keys[match[1]] = struct{}{}
+	keys := make(map[string]struct{})
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".up.sql") {
+			continue
+		}
+		contents, err := migrations.FS.ReadFile(entry.Name())
+		if err != nil {
+			t.Fatalf("read %s: %v", entry.Name(), err)
+		}
+		for _, insert := range statement.FindAll(contents, -1) {
+			for _, match := range quoted.FindAllStringSubmatch(string(insert), -1) {
+				keys[match[1]] = struct{}{}
+			}
+		}
 	}
 	return keys
 }
@@ -135,7 +145,7 @@ func TestDeclaredAdminPermissionsExistInTheSeed(t *testing.T) {
 	}
 }
 
-func TestAdminSurfaceHasExactlyThePhaseOneEndpoints(t *testing.T) {
+func TestAdminSurfaceHasExactlyTheDeclaredEndpoints(t *testing.T) {
 	f := newAuthFixture(t)
 	declared := f.router.AdminRequirements()
 
@@ -143,6 +153,9 @@ func TestAdminSurfaceHasExactlyThePhaseOneEndpoints(t *testing.T) {
 		"POST /api/v1/admin/auth/login":  "public",
 		"POST /api/v1/admin/auth/logout": "authenticated",
 		"GET /api/v1/admin/auth/me":      "authenticated",
+		// The first permission-gated endpoint: ending a customer's subscription is
+		// the platform's hand, and the permission it needs is seeded (0005).
+		"POST /api/v1/admin/subscriptions/{subscriptionID}/terminate": "subscriptions.terminate",
 	}
 
 	for route, requirement := range want {

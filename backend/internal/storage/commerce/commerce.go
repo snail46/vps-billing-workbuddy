@@ -306,12 +306,11 @@ func (s *Store) PayOrder(ctx context.Context, orderID uuid.UUID, paidAt time.Tim
 // ----------------------------------------------------------------- invoices --
 
 func (s *Store) CreateInvoice(ctx context.Context, invoice commerce.Invoice) error {
-	orderID := invoice.OrderID
 	if err := s.queries.CreateInvoice(ctx, sqlcgen.CreateInvoiceParams{
 		ID:          invoice.ID,
 		InvoiceNo:   invoice.InvoiceNo,
 		UserID:      invoice.UserID,
-		OrderID:     &orderID,
+		OrderID:     invoice.OrderID,
 		Status:      invoice.Status,
 		AmountMinor: invoice.Amount.AmountMinor,
 		Currency:    string(invoice.Amount.Currency),

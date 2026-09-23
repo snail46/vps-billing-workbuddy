@@ -470,6 +470,126 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+  /subscriptions:
+    get:
+      operationId: listSubscriptions
+      summary: The signed-in customer's subscriptions
+      responses:
+        "200":
+          description: Subscriptions, most recent first
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [subscriptions]
+                        properties:
+                          subscriptions:
+                            type: array
+                            items: {$ref: "#/components/schemas/Subscription"}
+        "401":
+          description: No session
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+  /subscriptions/{id}:
+    get:
+      operationId: getSubscription
+      summary: One of the customer's subscriptions
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: The subscription
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [subscription]
+                        properties:
+                          subscription: {$ref: "#/components/schemas/Subscription"}
+        "404": {description: No such subscription}
+  /subscriptions/{id}/cancel:
+    post:
+      operationId: cancelSubscription
+      summary: Ask for the subscription to end when the period does
+      description: |
+        The current period has been paid for and is not cut short. The machine
+        honours the request when it would next bill, instead of billing again.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: The request is recorded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [cancel_at_period_end]
+                        properties:
+                          cancel_at_period_end: {type: boolean, enum: [true]}
+        "404": {description: No such subscription}
+        "409": {description: The subscription has already ended}
+  /subscriptions/{id}/renew:
+    post:
+      operationId: renewSubscription
+      summary: Pay the due renewal now, from the wallet balance
+      description: |
+        The sweep would reach it on its own pass. The renewal is paid from the
+        wallet, the period is extended in the same transaction, and the response
+        carries the subscription in its new period.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: The subscription in its new period
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [subscription]
+                        properties:
+                          subscription: {$ref: "#/components/schemas/Subscription"}
+        "404": {description: No such subscription}
+        "409":
+          description: The period has not ended, the subscription has ended, or the
+            balance does not cover the renewal
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorEnvelope"}
+  /admin/subscriptions/{id}/terminate:
+    post:
+      operationId: terminateSubscription
+      summary: End a subscription on the platform's authority
+      description: |
+        The administrative hand on the machine. It answers abuse and chargebacks,
+        not preference, and requires the `subscriptions.terminate` permission.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: Terminated}
+        "403": {description: The administrator does not hold the permission}
+        "404": {description: No such subscription}
+        "409": {description: The subscription has already ended}
   /instances:
     get:
       operationId: listInstances
@@ -721,6 +841,29 @@ components:
         gateway_payment_id: {type: string}
         pay_url: {type: string}
         expires_at: {type: [string, "null"], format: date-time}
+    Subscription:
+      type: object
+      required: [id, plan_id, status, billing_cycle, price_minor, currency,
+                 current_period_start, current_period_end, next_due_at,
+                 cancel_at_period_end, version]
+      properties:
+        id: {type: string, format: uuid}
+        plan_id: {type: string, format: uuid}
+        status:
+          type: string
+          enum: [pending, active, past_due, suspended, cancelled, expired, terminated]
+        billing_cycle: {type: string, enum: [monthly, quarterly, semiannually, annually]}
+        price_minor: {type: integer, format: int64, description: The period price in minor units}
+        currency: {type: string}
+        started_at: {type: string, format: date-time, nullable: true}
+        current_period_start: {type: string, format: date-time}
+        current_period_end: {type: string, format: date-time}
+        next_due_at: {type: string, format: date-time}
+        grace_until: {type: string, format: date-time, nullable: true,
+                      description: The deadline by which the current state must resolve}
+        cancel_at_period_end: {type: boolean}
+        ended_at: {type: string, format: date-time, nullable: true}
+        version: {type: integer, format: int64}
     OperationAccepted:
       type: object
       required: [success, data, request_id]

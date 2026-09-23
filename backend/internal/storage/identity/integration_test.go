@@ -325,11 +325,13 @@ func TestPermissionsForAdminResolvesTheSeededRoles(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM permissions").Scan(&total); err != nil {
 		t.Fatalf("count permissions: %v", err)
 	}
-	// docs/15 fixes 27 permission keys. The number is asserted so the test cannot pass on a
-	// seed that lost rows.
-	if total != 27 {
-		t.Fatalf("the permissions table holds %d rows, expected 27; the seed did not run or "+
-			"was changed", total)
+	// docs/15 fixed the original 27 permission keys; later phases extend the
+	// vocabulary by migration (0005 added the subscription keys), which is how a
+	// CHECK-guarded vocabulary is allowed to grow. The floor is asserted so the
+	// test cannot pass on a seed that lost rows.
+	if total < 27 {
+		t.Fatalf("the permissions table holds %d rows, expected at least the 27 docs/15 "+
+			"fixed; the seed did not run or was changed", total)
 	}
 
 	superAdmin := createAdmin(t, pool, "super_admin")
