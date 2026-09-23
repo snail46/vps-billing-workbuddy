@@ -55,7 +55,18 @@ require npm
 
 # Optional. Used for the configuration checks that would otherwise only run in
 # CI, so their absence is reported rather than silently skipped.
-python_bin="$(command -v python3 || command -v python || true)"
+#
+# `PYTHON` overrides the interpreter, which is how a developer points this at one
+# that has PyYAML installed:
+#
+#   PYTHON=/path/to/python bash scripts/verify-local.sh
+#
+# Without an override the first `python3` or `python` on PATH is used. That
+# interpreter frequently has no third-party packages, and then the checks that need
+# PyYAML report a skip — which is honest, but it also means the workflow file can
+# go unvalidated indefinitely. It did for several commits before the override
+# existed.
+python_bin="${PYTHON:-$(command -v python3 || command -v python || true)}"
 
 # ---------------------------------------------------------------------------
 section "Backend"

@@ -454,8 +454,16 @@ jobs:
 
           # Notice on a green run, error otherwise, so an informative digest does
           # not paint red marks over a passing job.
-          level=error
-          [ "${{ job.status }}" = "success" ] && level=notice
+          #
+          # Written as if/else rather than `[ … ] && level=notice`: a failing `&&`
+          # list returns the test's own exit status, and this is the last statement
+          # in the script, so the digest step would have failed on exactly the runs
+          # it exists for.
+          if [ "${{ job.status }}" = "success" ]; then
+            level=notice
+          else
+            level=error
+          fi
           printf '::%s::%s\n' "$level" "$message"
 
       - name: Tear down
