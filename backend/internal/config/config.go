@@ -62,6 +62,11 @@ type Config struct {
 	RateLimitRegisterPerIP   int           `env:"RATE_LIMIT_REGISTER_PER_IP" envDefault:"10"`
 	RateLimitWindow          time.Duration `env:"RATE_LIMIT_WINDOW" envDefault:"15m"`
 
+	// PaymentFakeSecret signs the fake gateway's callbacks. It is what the webhook
+	// endpoint verifies against, so a deployment that keeps the development value is a
+	// deployment whose payments can be forged by anyone who has read this repository.
+	PaymentFakeSecret string `env:"PAYMENT_FAKE_SECRET" envDefault:"development-fake-gateway-secret"`
+
 	DatabaseURL         string        `env:"DATABASE_URL,required"`
 	DBMaxConns          int32         `env:"DB_MAX_CONNS" envDefault:"10"`
 	DBMinConns          int32         `env:"DB_MIN_CONNS" envDefault:"0"`
@@ -160,6 +165,9 @@ func (c Config) Validate() error {
 
 	if c.IsProduction() && c.SessionCookieSecure != nil && !*c.SessionCookieSecure {
 		return fmt.Errorf("config: SESSION_COOKIE_SECURE=false is not permitted when APP_ENV is %s", EnvProduction)
+	}
+	if c.IsProduction() && c.PaymentFakeSecret == "development-fake-gateway-secret" {
+		return fmt.Errorf("config: PAYMENT_FAKE_SECRET must be changed when APP_ENV is %s", EnvProduction)
 	}
 
 	return nil

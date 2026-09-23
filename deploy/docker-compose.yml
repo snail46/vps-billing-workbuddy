@@ -38,6 +38,7 @@ x-backend-environment: &backend-environment
   # and .env.example both set them together.
   DATABASE_URL: ${DATABASE_URL:-postgres://vps_billing:change-me@postgres:5432/vps_billing?sslmode=disable}
   REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  PAYMENT_FAKE_SECRET: ${PAYMENT_FAKE_SECRET:-development-fake-gateway-secret}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   LOG_FORMAT: ${LOG_FORMAT:-json}
   USER_WEB_ORIGIN: ${USER_WEB_ORIGIN:-http://localhost:3000}

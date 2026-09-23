@@ -17,13 +17,16 @@ import (
 	"syscall"
 
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/authmw"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/commerce"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/config"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/db"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/health"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/httpapi"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/identity"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/logging"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/payment/fakegateway"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/redisx"
+	commercestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/commerce"
 	identitystore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/identity"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/version"
 )
@@ -120,6 +123,24 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 
+	// The commercial collaborator graph, assembled for the same reason the identity one
+	// is: the router receives built services rather than choosing dependencies.
+	//
+	// The store is bound to the pool, and every write the service makes goes through
+	// WithinTransaction, which rebinds the store and the ledger poster to one
+	// transaction. That is where docs/04's "Payment + Order + Ledger + Outbox" lives.
+	commerceStore := commercestore.New(pool)
+	fakeGateway := fakegateway.New(cfg.PaymentFakeSecret)
+	commerceService, err := commerce.NewService(commerce.Deps{
+		Store: commerceStore,
+		Gateways: commerce.Gateways{
+			fakeGateway.Name(): fakeGateway,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
 	sessions := authmw.New(identityService, logger, authmw.SessionCookie{Secure: cfg.SecureCookies()})
 	attempts := func(scope authmw.Scope, perIP, perAccount int) authmw.Attempts {
 		return authmw.Attempts{
@@ -144,6 +165,12 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Login:      attempts(authmw.ScopeLogin, cfg.RateLimitLoginPerIP, cfg.RateLimitLoginPerAccount),
 			AdminLogin: attempts(authmw.ScopeAdminLogin, cfg.RateLimitLoginPerIP, cfg.RateLimitLoginPerAccount),
 			Register:   attempts(authmw.ScopeRegister, cfg.RateLimitRegisterPerIP, 0),
+		},
+		Commerce: &httpapi.CommerceDeps{
+			Service: commerceService,
+			Gateways: commerce.Gateways{
+				fakeGateway.Name(): fakeGateway,
+			},
 		},
 		Health: health.NewHandler(health.Options{
 			Environment: cfg.AppEnv,

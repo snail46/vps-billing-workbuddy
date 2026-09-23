@@ -49,6 +49,9 @@ type Deps struct {
 	Logger *slog.Logger
 	Health *health.Handler
 	Auth   *Auth
+	// Commerce is a pointer for the same reason Auth is: a build without a commerce
+	// service mounts no commercial routes rather than ones that would fail.
+	Commerce *CommerceDeps
 }
 
 // Handler is the assembled HTTP surface.
@@ -121,7 +124,7 @@ func NewRouter(deps Deps) *Handler {
 	}))
 	r.Use(bmw.CORS(deps.Config.AllowedOrigins()))
 
-	api := &api{logger: logger, auth: deps.Auth}
+	api := &api{logger: logger, auth: deps.Auth, commerce: deps.Commerce}
 
 	// Router-level handlers cover paths that match no route at all, so the
 	// envelope holds even for a malformed URL.
@@ -143,6 +146,9 @@ func NewRouter(deps Deps) *Handler {
 		// chain and the envelope are shared rather than rebuilt per phase.
 		if deps.Auth != nil {
 			requirements = mountAuth(v1, api)
+		}
+		if deps.Commerce != nil {
+			mountCommerce(v1, api)
 		}
 	})
 
@@ -174,6 +180,39 @@ func mountAuth(v1 chi.Router, api *api) map[string]string {
 	return admin.requirements
 }
 
+// mountCommerce installs the commercial surface.
+//
+// The catalogue is public, because it is what a customer reads before they have an
+// account. Everything that commits money is behind the customer's own session and CSRF
+// token, and the one route a gateway calls is authenticated by the gateway's signature
+// instead — which is why it is mounted here rather than under the admin prefix: it is
+// not an administrative act, and holding it to a session would mean holding a gateway
+// to a session it cannot have.
+func mountCommerce(v1 chi.Router, api *api) {
+	sessions := api.auth.Sessions
+
+	// The catalogue.
+	mount(v1, http.MethodGet, "/products", api.listCatalog)
+
+	// Orders, always scoped to the session's own customer.
+	mount(v1, http.MethodPost, "/orders", api.createOrder,
+		sessions.RequireUser, sessions.RequireCSRF)
+	mount(v1, http.MethodGet, "/orders", api.listOrders,
+		sessions.RequireUser)
+	mount(v1, http.MethodGet, "/orders/{orderID}", api.getOrder,
+		sessions.RequireUser)
+	mount(v1, http.MethodPost, "/orders/{orderID}/payments", api.startPayment,
+		sessions.RequireUser, sessions.RequireCSRF)
+
+	// One route per gateway, keyed by the gateway's own name, so adding a provider is
+	// configuration rather than a new endpoint.
+	for _, name := range api.commerce.Gateways.Names() {
+		gateway := name
+		mount(v1, http.MethodPost, "/webhooks/payments/"+gateway, api.paymentWebhook)
+		_ = gateway
+	}
+}
+
 // mount registers a handler behind the given middleware.
 func mount(r chi.Router, method, pattern string, handler http.HandlerFunc, chain ...func(http.Handler) http.Handler) {
 	r.With(chain...).Method(method, pattern, handler)
@@ -181,8 +220,9 @@ func mount(r chi.Router, method, pattern string, handler http.HandlerFunc, chain
 
 // api carries the collaborators shared by the contract-level handlers.
 type api struct {
-	logger *slog.Logger
-	auth   *Auth
+	logger   *slog.Logger
+	auth     *Auth
+	commerce *CommerceDeps
 }
 
 func (a *api) notFound(w http.ResponseWriter, r *http.Request) {

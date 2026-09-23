@@ -67,6 +67,19 @@ export const enUS: TranslationShape<typeof zhCN> = {
     invalid_email: "Enter a valid email address.",
     invalid_password: "That password does not meet the requirements. Please choose a longer one.",
     invalid_locale: "That language is not supported.",
+    // The commerce failures. They say what went wrong rather than only that something
+    // did, because a payment that silently failed is worse than one that says why.
+    signature_invalid: "The callback signature is invalid and it has been refused.",
+    malformed_callback: "The callback could not be parsed.",
+    order_not_payable: "This order can no longer be paid. Please refresh to see its state.",
+    payment_already_started: "A payment has already been started for this order.",
+    payment_amount_mismatch: "The callback amount disagrees with the order, so it has not been recorded.",
+    payment_currency_mismatch: "The callback currency disagrees with the order, so it has not been recorded.",
+    unsupported_notification: "This kind of callback cannot be handled yet.",
+    invalid_plan: "That plan does not exist or is no longer on sale.",
+    plan_not_purchaseable: "That plan is not available to buy right now.",
+    mixed_currencies: "An order can only contain one currency.",
+    empty_order: "Choose at least one item.",
   },
   health: {
     title: "Platform status",

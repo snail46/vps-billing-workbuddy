@@ -16,10 +16,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/authmw"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/commerce"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/health"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/httpapi"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/identity"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/payment/fakegateway"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/redisx"
+	commercestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/commerce"
 	identitystore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/identity"
 )
 
@@ -39,6 +42,9 @@ type e2eEnv struct {
 	pool     *pgxpool.Pool
 	hasher   *identity.PasswordHasher
 	password string
+	// gateway is the same instance the router verifies callbacks with, so a test can
+	// build one that is indistinguishable from a real delivery.
+	gateway *fakegateway.Fake
 }
 
 func newE2E(t *testing.T) *e2eEnv {
@@ -76,6 +82,16 @@ func newE2E(t *testing.T) *e2eEnv {
 		t.Fatalf("build hasher: %v", err)
 	}
 
+	fake := fakegateway.New(testGatewaySecret)
+
+	commerceService, err := commerce.NewService(commerce.Deps{
+		Store:    commercestore.New(pool),
+		Gateways: commerce.Gateways{fake.Name(): fake},
+	})
+	if err != nil {
+		t.Fatalf("build the commerce service: %v", err)
+	}
+
 	service, err := identity.NewService(identity.Deps{
 		Directory:   identitystore.NewDirectory(pool),
 		Permissions: identitystore.NewDirectory(pool),
@@ -98,7 +114,15 @@ func newE2E(t *testing.T) *e2eEnv {
 		}
 	}
 
+	gateways := commerce.Gateways{
+		fake.Name(): fake,
+	}
+
 	return &e2eEnv{
+		gateway:  fake,
+		pool:     pool,
+		hasher:   hasher,
+		password: "correct horse battery staple",
 		router: httpapi.NewRouter(httpapi.Deps{
 			Config: cfg,
 			Logger: testLogger(),
@@ -110,10 +134,11 @@ func newE2E(t *testing.T) *e2eEnv {
 				AdminLogin: attempts(authmw.ScopeAdminLogin, cfg.RateLimitLoginPerIP, cfg.RateLimitLoginPerAccount),
 				Register:   attempts(authmw.ScopeRegister, cfg.RateLimitRegisterPerIP, 0),
 			},
+			Commerce: &httpapi.CommerceDeps{
+				Service:  commerceService,
+				Gateways: gateways,
+			},
 		}),
-		pool:     pool,
-		hasher:   hasher,
-		password: "correct horse battery staple",
 	}
 }
 

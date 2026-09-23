@@ -184,6 +184,9 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(io.Discard, nil))
 }
 
+// testGatewaySecret is what the fake gateway in these tests signs with.
+const testGatewaySecret = "e2e-fake-gateway-secret"
+
 // testConfig is a configuration the identity surface will accept.
 func testConfig() config.Config {
 	return config.Config{
@@ -200,6 +203,7 @@ func testConfig() config.Config {
 		RateLimitLoginPerAccount: 3,
 		RateLimitRegisterPerIP:   5,
 		RateLimitWindow:          15 * time.Minute,
+		PaymentFakeSecret:        testGatewaySecret,
 	}
 }
 

@@ -64,6 +64,19 @@ export const zhCN = {
     invalid_email: "请输入有效的邮箱地址。",
     invalid_password: "密码不符合要求，请设置更长的密码。",
     invalid_locale: "暂不支持该语言。",
+    // The commerce failures. They say what went wrong rather than only that something
+    // did, because a payment that silently failed is worse than one that says why.
+    signature_invalid: "请求签名无效，已拒绝该回调。",
+    malformed_callback: "回调内容无法解析。",
+    order_not_payable: "当前订单状态不支持付款，请刷新后查看。",
+    payment_already_started: "该订单已发起过付款，请勿重复提交。",
+    payment_amount_mismatch: "回调金额与订单金额不一致，已拒绝入账。",
+    payment_currency_mismatch: "回调币种与订单币种不一致，已拒绝入账。",
+    unsupported_notification: "暂不支持处理该类型的回调。",
+    invalid_plan: "所选套餐不存在或已下架。",
+    plan_not_purchaseable: "所选套餐当前不可购买。",
+    mixed_currencies: "一份订单只能使用一种货币。",
+    empty_order: "请至少选择一件商品。",
   },
   health: {
     title: "平台状态",
