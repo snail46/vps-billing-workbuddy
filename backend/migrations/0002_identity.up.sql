@@ -19,10 +19,19 @@
 -- `email` is stored already normalised (trimmed and lower-cased) by the
 -- application, and the UNIQUE constraint is on the stored value exactly as the
 -- reference declares. The alternative — a unique index on `lower(email)` — would
--- put the guarantee in the database, but it would also make this table differ
--- from the reference that the rest of the roadmap is written against. The
--- normalisation therefore lives at the single choke point that writes users, and
--- is covered by a test.
+-- differ from the reference that the rest of the roadmap is written against, so
+-- the normalisation stays in the application and the UNIQUE constraint stays as
+-- declared.
+--
+-- What the application does is then made checkable rather than merely trusted: a
+-- CHECK constraint refuses a row whose address is not already normalised. That is
+-- what makes the plain UNIQUE constraint sufficient — without it, "Ada@example.com"
+-- and "ada@example.com" could both exist, and neither the sign-in path (which
+-- normalises) nor a lookup by address could reach the first one. The application
+-- is still the only writer today; the constraint exists because the invariant is
+-- the database's to keep, and a profile-edit path written in a later phase that
+-- forgot to normalise would otherwise create an account its owner cannot sign in
+-- to — silently, and with no error anywhere until they tried.
 --
 -- `updated_at` is maintained by the application rather than by a trigger: the
 -- write path already knows it is updating, and a trigger would also fire for the
@@ -41,7 +50,8 @@ CREATE TABLE users (
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT users_status_known CHECK (status IN ('active', 'suspended')),
   -- docs/13 defines exactly two locales; a third would render as raw keys.
-  CONSTRAINT users_locale_supported CHECK (locale IN ('zh-CN', 'en-US'))
+  CONSTRAINT users_locale_supported CHECK (locale IN ('zh-CN', 'en-US')),
+  CONSTRAINT users_email_normalized CHECK (email = lower(email))
 );
 
 CREATE TABLE admins (
@@ -57,7 +67,11 @@ CREATE TABLE admins (
   last_login_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT admins_status_known CHECK (status IN ('active', 'suspended'))
+  CONSTRAINT admins_status_known CHECK (status IN ('active', 'suspended')),
+  -- The same invariant as `users`, for the same reason: the administrative sign-in
+  -- path normalises the submitted address, so a row stored in any other form would be
+  -- an account nobody could reach.
+  CONSTRAINT admins_email_normalized CHECK (email = lower(email))
 );
 
 -- `name_key` is an i18n key rather than a display name, so role names are

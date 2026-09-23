@@ -143,23 +143,35 @@ func (e *e2eEnv) do(t *testing.T, method, path, body string, cookie *http.Cookie
 	return rec
 }
 
-// e2eAddress returns an address no other run will have used. Addresses are UNIQUE, so a fixed
-// one would pass once and fail on the next run of a database that was not recreated.
+// e2eAddress returns a fresh address in mixed case.
+//
+// Mixed case on purpose, and it is load-bearing rather than cosmetic. The service normalises
+// what it stores, so every request in these tests sends an address that differs from the
+// stored one, and signing in with it as given proves the lookup normalises too. That is the
+// whole reason a plain UNIQUE constraint on the column is sufficient. The domain is upper
+// case so the two forms always differ, whatever the random part happens to contain, which
+// makes the assertion below deterministic rather than usually true.
 func e2eAddress() string {
 	buf := make([]byte, 8)
 	if _, err := rand.Read(buf); err != nil {
 		panic(err)
 	}
-	return base64.RawURLEncoding.EncodeToString(buf) + "@example.com"
+	return base64.RawURLEncoding.EncodeToString(buf) + "@Example.COM"
 }
 
 func TestIdentityEndToEnd(t *testing.T) {
 	e := newE2E(t)
 	ctx := context.Background()
 
+	// Sent in mixed case, stored normalised. Every lookup in this test uses the normalised
+	// form, and the sign-in requests use the mixed-case one, so both directions are exercised.
 	address := e2eAddress()
+	normalized := identity.NormalizeEmail(address)
+	if normalized == address {
+		t.Fatal("the fixture address is already normalised; it would prove nothing")
+	}
 	t.Cleanup(func() {
-		_, _ = e.pool.Exec(context.Background(), "DELETE FROM users WHERE email = $1", address)
+		_, _ = e.pool.Exec(context.Background(), "DELETE FROM users WHERE email = $1", normalized)
 	})
 
 	// ---- register ---------------------------------------------------------------
@@ -169,23 +181,30 @@ func TestIdentityEndToEnd(t *testing.T) {
 		t.Fatalf("register: %d (%s)", rec.Code, rec.Body.String())
 	}
 
-	var storedLocale string
+	var storedEmail, storedLocale string
 	if err := e.pool.QueryRow(ctx,
-		"SELECT locale FROM users WHERE email = $1", address).Scan(&storedLocale); err != nil {
+		"SELECT email, locale FROM users WHERE email = $1", normalized).Scan(&storedEmail, &storedLocale); err != nil {
 		t.Fatalf("read the created user: %v", err)
+	}
+	// Stored trimmed and lower-cased, which is what makes the plain UNIQUE constraint on the
+	// column sufficient. A row stored as sent would be an account its owner could not reach,
+	// because the sign-in path normalises the address it looks up.
+	if storedEmail != normalized {
+		t.Errorf("stored email = %q, expected %q", storedEmail, normalized)
 	}
 	if storedLocale != "en-US" {
 		t.Errorf("locale = %q", storedLocale)
 	}
 
 	// Registering the same address again is a conflict, and that comes from a real SQLSTATE
-	// being mapped rather than from a synthetic one.
+	// being mapped rather than from a synthetic one. Sent in the opposite case, so this also
+	// proves the conflict check normalises.
 	if rec := e.do(t, http.MethodPost, "/api/v1/auth/register",
-		`{"email":"`+address+`","password":"`+e.password+`"}`, nil, ""); rec.Code != http.StatusConflict {
-		t.Errorf("a duplicate registration returned %d (%s)", rec.Code, rec.Body.String())
+		`{"email":"`+strings.ToUpper(address)+`","password":"`+e.password+`"}`, nil, ""); rec.Code != http.StatusConflict {
+		t.Errorf("a duplicate registration in different case returned %d (%s)", rec.Code, rec.Body.String())
 	}
 
-	// ---- sign in ----------------------------------------------------------------
+	// ---- sign in, with the address as the person would type it -------------------
 	login := e.do(t, http.MethodPost, "/api/v1/auth/login",
 		`{"email":"`+address+`","password":"`+e.password+`"}`, nil, "")
 	if login.Code != http.StatusOK {
@@ -205,12 +224,14 @@ func TestIdentityEndToEnd(t *testing.T) {
 	if me.Code != http.StatusOK {
 		t.Fatalf("me: %d (%s)", me.Code, me.Body.String())
 	}
-	if got := decodeEnvelope(t, me).Data.User.Email; got != address {
-		t.Errorf("me returned %q", got)
+	// Reported as stored, which is normalised: a client renders what the platform holds
+	// rather than echoing back what it sent.
+	if got := decodeEnvelope(t, me).Data.User.Email; got != normalized {
+		t.Errorf("me returned %q, expected %q", got, normalized)
 	}
 
 	// ---- a suspension takes effect on the next request --------------------------
-	if _, err := e.pool.Exec(ctx, "UPDATE users SET status = 'suspended' WHERE email = $1", address); err != nil {
+	if _, err := e.pool.Exec(ctx, "UPDATE users SET status = 'suspended' WHERE email = $1", normalized); err != nil {
 		t.Fatalf("suspend: %v", err)
 	}
 	if rec := e.do(t, http.MethodGet, "/api/v1/auth/me", "", cookie, ""); rec.Code != http.StatusForbidden {
@@ -223,7 +244,7 @@ func TestIdentityEndToEnd(t *testing.T) {
 		t.Errorf("a suspended account signed in: %d (%s)", rec.Code, rec.Body.String())
 	}
 	// Reactivated, so the rest of the test is about the session rather than the status.
-	if _, err := e.pool.Exec(ctx, "UPDATE users SET status = 'active' WHERE email = $1", address); err != nil {
+	if _, err := e.pool.Exec(ctx, "UPDATE users SET status = 'active' WHERE email = $1", normalized); err != nil {
 		t.Fatalf("reactivate: %v", err)
 	}
 
@@ -244,6 +265,10 @@ func TestAdminSignInEndToEndIsAudited(t *testing.T) {
 	ctx := context.Background()
 
 	address := e2eAddress()
+	// The administrators table carries the same normalisation constraint as users, so the
+	// row has to be written the way the service writes one. The sign-in below uses the
+	// mixed-case form, which is what proves the administrative path normalises too.
+	normalized := identity.NormalizeEmail(address)
 	adminID := uuid.New()
 
 	// Written as SQL because no administrative creation path exists yet — that arrives with
@@ -255,7 +280,7 @@ func TestAdminSignInEndToEndIsAudited(t *testing.T) {
 	if _, err := e.pool.Exec(ctx,
 		`INSERT INTO admins (id, email, password_hash, status, display_name)
 		 VALUES ($1, $2, $3, 'active', 'E2E Administrator')`,
-		adminID, address, encoded); err != nil {
+		adminID, normalized, encoded); err != nil {
 		t.Fatalf("insert administrator: %v", err)
 	}
 	t.Cleanup(func() {

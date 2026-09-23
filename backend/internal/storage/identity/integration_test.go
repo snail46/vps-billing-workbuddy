@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -47,15 +48,17 @@ func newPool(t *testing.T) *pgxpool.Pool {
 
 // uniqueAddress returns an address no other run will have used.
 //
-// Addresses are UNIQUE, so a test that used a fixed one would pass once and fail on the
-// second run of a database that was not recreated in between — which is exactly the sort of
-// test that gets blamed on the code under test.
+// Lower case, because the schema refuses anything else: normalisation is the storing
+// application's job and the CHECK constraint is what proves it happened. Addresses are also
+// UNIQUE, so a fixed one would pass once and fail on the second run of a database that was
+// not recreated in between — which is exactly the sort of test that gets blamed on the code
+// under test.
 func uniqueAddress() string {
 	buf := make([]byte, 8)
 	if _, err := rand.Read(buf); err != nil {
 		panic(err)
 	}
-	return base64.RawURLEncoding.EncodeToString(buf) + "@example.com"
+	return strings.ToLower(base64.RawURLEncoding.EncodeToString(buf)) + "@example.com"
 }
 
 // purge removes the rows a test created. It runs after the assertions, so a failure leaves
@@ -230,6 +233,44 @@ func TestCreateUserRejectsALocaleTheConstraintDoesNotAllow(t *testing.T) {
 	}
 	if errors.Is(err, identity.ErrEmailTaken) {
 		t.Errorf("the locale constraint was reported as an address conflict: %v", err)
+	}
+}
+
+func TestCreateUserRefusesAnAddressThatIsNotNormalized(t *testing.T) {
+	pool := newPool(t)
+	directory := NewDirectory(pool)
+	ctx := context.Background()
+
+	address := uniqueAddress()
+	purge(t, pool, address)
+
+	// The application normalises before writing, so this never happens through the service.
+	// It is asserted anyway, because the plain UNIQUE constraint on the column is only
+	// sufficient if every stored address is already normalised: "Ada@example.com" and
+	// "ada@example.com" would otherwise be two accounts, and the sign-in path — which
+	// normalises — could reach only one of them.
+	//
+	// The constraint is what makes that a property of the schema rather than a rule each
+	// future writer has to remember. A profile-edit screen written in a later phase that
+	// forgot to normalise would otherwise create an account its owner could not sign in to,
+	// silently, with no error until they tried.
+	_, err := directory.CreateUser(ctx, identity.User{
+		ID: uuid.New(), Email: "Ada." + address, PasswordHash: "hash",
+		Status: identity.StatusActive, Locale: "zh-CN", Timezone: "UTC",
+	})
+	if err == nil {
+		t.Fatal("an unnormalised address was stored")
+	}
+	if errors.Is(err, identity.ErrEmailTaken) {
+		t.Errorf("the constraint was reported as an address conflict: %v", err)
+	}
+
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM users WHERE lower(email) = lower($1)", address).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("%d rows were written despite the refusal", count)
 	}
 }
 

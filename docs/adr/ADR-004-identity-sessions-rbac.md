@@ -171,6 +171,27 @@ path checked `ErrUserNotFound`, which was correct only because one error served 
 An error that does not say which space failed invites exactly the confusion the separation
 exists to prevent.
 
+**The stored address is constrained to its normalised form.** The design above put
+normalisation in the application, at the single choke point that writes users, and relied on
+that to make the plain `UNIQUE` constraint on the column sufficient. The integration tier
+then showed what that reliance costs: a test that wrote an address directly — as the
+administrative seed path currently must, because no admin-creation path exists yet — created a
+row the sign-in path could never find, because sign-in normalises what it looks up. Nothing
+failed; the account simply became unreachable.
+
+The fix is a `CHECK (email = lower(email))` on both tables, so the invariant is the schema's
+rather than a rule each future writer has to remember. A profile-edit screen in a later phase
+that forgot to normalise now gets a loud constraint violation instead of creating an account
+its owner cannot sign in to. The uniqueness semantics are unchanged and stay exactly as
+`db/schema.sql` declares them — the constraint is on the stored form, not a second uniqueness
+rule — which is why the alternative of a unique index on `lower(email)` was still not taken.
+
+This amends `0002_identity` rather than adding a migration. The phase that owns the file has
+not passed its gate, no environment retains the schema — CI creates and drops it on every run,
+and the Gate tears its volumes down — and a migration whose purpose is to add a constraint the
+original should have carried is history written for nobody. If any environment had applied it,
+this would be a new migration instead.
+
 One ordering is load-bearing and is stated here so it is not rearranged: **the session check
 must be mounted outside the CSRF check.** `chi` applies middleware in the order given, and a
 token check mounted first finds no principal and refuses every mutating request. It fails
