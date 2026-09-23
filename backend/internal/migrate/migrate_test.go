@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/migrate"
+	"github.com/snail46/vps-billing-workbuddy/backend/migrations"
 )
 
 // requireDatabaseURL returns the integration database URL, skipping the test when
@@ -61,9 +62,18 @@ func TestMigrationsApplyForwardAndBackward(t *testing.T) {
 	if dirty {
 		t.Fatal("schema must not be dirty after a successful up")
 	}
-	// 0001_init is the history root, so applying the full history lands on 1.
-	if version != 1 {
-		t.Fatalf("expected schema version 1, got %d", version)
+
+	// The expected version is a property of the embedded history rather than a
+	// number written here. It was written here, as 1, and broke the moment Phase 1
+	// added a migration — a failure that reads like a migration defect and is not
+	// one. migrations.LatestVersion has its own unit test, which runs locally and
+	// without a database.
+	expected, err := migrations.LatestVersion()
+	if err != nil {
+		t.Fatalf("cannot determine the expected schema version: %v", err)
+	}
+	if version != expected {
+		t.Fatalf("expected schema version %d after applying the full history, got %d", expected, version)
 	}
 
 	// Re-running must be a no-op rather than an error: deployments restart.
