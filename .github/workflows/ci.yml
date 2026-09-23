@@ -155,12 +155,42 @@ jobs:
       # round trip, an expired one being refused, revocation reaching every
       # session of a subject — cannot be established against a fake, and a fake
       # plus a real store that disagree is worse than no test at all.
+      #
+      # `go test` prints no annotation on failure, and job logs require
+      # authentication to download even for a public repository, so the output is
+      # republished as annotations: the failing test names first, then the tail of
+      # the run, where the messages are. Without this a red integration job is a
+      # number and nothing else.
       - name: integration tests
         working-directory: backend
         env:
           TEST_DATABASE_URL: postgres://vps_billing:vps_billing@localhost:5432/vps_billing?sslmode=disable
           TEST_REDIS_URL: redis://localhost:6379/0
-        run: go test -count=1 ./...
+        run: |
+          set +e
+          go test -count=1 ./... 2>&1 | tee /tmp/integration.log
+          status="${PIPESTATUS[0]}"
+          if [ "${status}" -eq 0 ]; then
+            exit 0
+          fi
+
+          # The failing test names, one annotation each, so the list of what broke
+          # is at the top of the annotations rather than buried in the tail.
+          grep -E '(^|\s)FAIL' /tmp/integration.log | tail -n 20 | while IFS= read -r line; do
+            line="${line//'%'/'%25'}"
+            echo "::error::${line}"
+          done
+
+          # Then the tail, as one annotation: every step may show at most ten, so
+          # line-per-annotation would be truncated silently. Line breaks are
+          # encoded as %0A, and % is escaped first so the escape cannot corrupt
+          # the separator it is meant to produce.
+          message="$(tail -n 40 /tmp/integration.log \
+            | sed -e 's/%/%25/g' -e 's/\r//g' \
+            | awk 'NR>1{printf "%%0A"} {printf "%s", $0}')"
+          echo "::error::${message}"
+
+          exit "${status}"
 
   frontend:
     name: Frontend — typecheck, lint, tests, build

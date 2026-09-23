@@ -119,22 +119,30 @@ func TestSessionStoreRefusesAnExpiredRecordOnRead(t *testing.T) {
 	store := NewSessionStore(client)
 	ctx := context.Background()
 
-	// Placed directly in Redis, bypassing Create, because the case being covered is a
-	// record the store did not write: one left behind by a failed eviction, or restored
-	// from a backup. The key has no expiry of its own here, which is the point — the read
-	// path has to enforce the lifetime rather than trust the store to have done it.
-	expired, err := identity.NewSession(identity.SubjectUser, uuid.New(), time.Now().Add(-time.Hour))
-	if err != nil {
-		t.Fatalf("build session: %v", err)
+	// Built as a literal rather than through identity.NewSession, because NewSession derives
+	// the expiry from the instant it is given: passing it a past instant still produces a
+	// future expiry. Writing it directly is also what the case is about — a record the store
+	// did not write, left behind by a failed eviction or restored from a backup.
+	//
+	// The key is given no expiry of its own, which is the point: the read path has to enforce
+	// the lifetime rather than trust the store to have done it.
+	expired := identity.Session{
+		ID:         "expired-" + randomToken(),
+		Subject:    identity.SubjectUser,
+		SubjectID:  uuid.New(),
+		IssuedAt:   time.Now().Add(-2 * time.Hour),
+		ExpiresAt:  time.Now().Add(-time.Hour),
+		CSRFSecret: randomToken(),
 	}
 	encoded, err := json.Marshal(expired)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
-	if err := client.Set(ctx, sessionKey(identity.SubjectUser, expired.ID), string(encoded), 0).Err(); err != nil {
+	key := sessionKey(identity.SubjectUser, expired.ID)
+	if err := client.Set(ctx, key, string(encoded), 0).Err(); err != nil {
 		t.Fatalf("place the record: %v", err)
 	}
-	t.Cleanup(func() { _ = client.Del(context.Background(), sessionKey(identity.SubjectUser, expired.ID)).Err() })
+	t.Cleanup(func() { _ = client.Del(context.Background(), key).Err() })
 
 	if _, err := store.Get(ctx, identity.SubjectUser, expired.ID); !errors.Is(err, identity.ErrSessionNotFound) {
 		t.Errorf("an expired record was accepted: %v", err)
