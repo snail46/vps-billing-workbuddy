@@ -72,7 +72,8 @@
 - [x] duplicate webhook tests
 **Gate:** 同一支付回调重复 100 次只入账一次。
 
-> **状态：实现完成，Gate 待 CI 实跑。**
+> **状态：已关闭。** CI run #17（提交 `3cc55d3`）六个 job 全绿，Gate 在真实
+> PostgreSQL + Redis 上实证通过。
 >
 > 结构：`internal/money`（小写金额 + 币种）、`internal/ledger`（复式记账 + 平衡校验 +
 > 投影接口）、`internal/commerce`（状态机 / 订单快照 / 结算）、
@@ -81,12 +82,28 @@
 >
 > **Gate 测试**（`internal/httpapi/commerce_e2e_test.go`，CI-only）：同一回调
 > 顺序 100 次 + 并发 100 次，断言**恰好一次**订单支付、发票支付、
-> ledger 交易（两条平衡分录）与 outbox 事件；伪造回调（改金额 / 改状态）被拒且不动账。
+> ledger 交易（两条平衡分录）与 outbox 事件；伪造回调（改金额 / 改状态，以
+> 攻击者密钥正确签名）被拒且不动账。
 >
 > 结算是**一次条件 UPDATE**（`status IN ('pending','processing') RETURNING`），
 > 另有三道唯一约束兜底（幂等键、`(gateway, gateway_payment_id)`、
 > ledger 交易引用的部分唯一索引）。
 > 决策见 `docs/adr/ADR-005-commerce-money-and-ledger.md`。
+>
+> run #16 暴露并修掉三个真实缺陷（详见 commit `3cc55d3`）：
+>
+> 1. `mapWriteError` 把 nil 也包装 → 每次成功的发票/支付写入被报为失败 →
+>    回滚 → 500。现在 nil→nil，并有单测守门。
+> 2. webhook 路由挂成字面量、处理器读 `{gateway}` 参数 → 所有回调 404。
+>    改挂 `/webhooks/payments/{gateway}`；契约 walk 扩为全量装配后顺带抓到
+>    OpenAPI 里 `/products` 重复键。
+> 3. `internal/migrate` 的可逆性测试对**共享**集成库执行 `Down(1)`，而
+>    `go test ./...` 各包并发 → 商业表在 Gate 测试中途被删。改为在自建
+>    临时 probe 库里证明可逆性。
+>
+> 本地调试设施：便携 PostgreSQL（zonky 二进制）+ miniredis，可在无 Docker 的
+> 本机复现整套集成测试（redisx 的实时过期测试除外——miniredis 语义差异，
+> CI 真实 Redis 通过）。
 
 ## Phase 3 — Subscription
 - [ ] lifecycle
