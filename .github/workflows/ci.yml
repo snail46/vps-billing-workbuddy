@@ -199,6 +199,12 @@ jobs:
   foundation-gate:
     name: Phase 0 Gate — compose up, probes, migrations
     runs-on: ubuntu-latest
+    # Bounded deliberately. The default is 360 minutes, so a build that stalls
+    # spends an hour of runner time before anyone notices. This is short enough to
+    # contain that and long enough for a cold image build; the digest published
+    # below reports where the time went, so the bound can be revised against
+    # evidence instead of raised by guesswork.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -235,6 +241,11 @@ jobs:
       - name: Start the foundation environment
         run: |
           set -o pipefail
+
+          # Written before the command starts so the digest step can report elapsed
+          # time even when this step is cancelled or times out before it can report
+          # anything itself.
+          date +%s > compose-start.epoch
 
           if docker compose --env-file .env --progress plain \
                -f deploy/docker-compose.yml up -d --build 2>&1 | tee compose-up.log; then
@@ -339,9 +350,62 @@ jobs:
             echo "port ${port} answered 200"
           done
 
-      - name: Capture logs on failure
-        if: failure()
-        run: docker compose --env-file .env -f deploy/docker-compose.yml logs --no-color
+      # Runs on every exit path: success, failure, timeout and cancellation.
+      #
+      # A cancelled step never reaches its own error handling, and this job's log
+      # requires authentication to download even though the repository is public.
+      # Without this step a run stopped early leaves no readable evidence at all,
+      # which is exactly what the Gate's third run produced: it was cancelled
+      # after 25 minutes and every diagnostic step was skipped.
+      #
+      # The digest separates "slow" from "stuck". BuildKit's plain progress prints
+      # the elapsed time of each step as `#N DONE <seconds>`, so ranking those
+      # answers "where did the time go" without needing a container runtime, and
+      # the trailing lines show whether the stack ever came up.
+      - name: Publish the build digest
+        if: always()
+        run: |
+          compose="docker compose --env-file .env -f deploy/docker-compose.yml"
+
+          {
+            echo "gate digest"
+            if [ -f compose-start.epoch ]; then
+              echo "elapsed: $(( $(date +%s) - $(cat compose-start.epoch) ))s"
+            else
+              echo "the compose step never started"
+            fi
+
+            if [ -f compose-up.log ]; then
+              echo "slowest build steps:"
+              grep -oE '#[0-9]+ DONE [0-9.]+s' compose-up.log | sort -k3 -rn | head -n 8
+              echo "last lines of the compose output:"
+              tail -n 12 compose-up.log
+            else
+              echo "compose-up.log was never written"
+            fi
+
+            echo "container state:"
+            $compose ps -a 2>&1 | tail -n 12
+
+            echo "service logs (tail):"
+            $compose logs --no-color 2>&1 | tail -n 15
+          } > digest.txt || true
+
+          # Published as ONE annotation: GitHub exposes at most ten per step, so a
+          # per-line scheme would silently drop most of the digest.
+          #
+          # `%` opens an escape sequence in a workflow command, so it is escaped
+          # before the separators are inserted; encoding it afterwards would
+          # double-encode them. A newline terminates the command itself, so line
+          # breaks are carried as %0A, which GitHub turns back into real ones.
+          message="$(sed -e 's/%/%25/g' -e 's/\r//g' digest.txt \
+            | awk 'NR>1{printf "%%0A"} {printf "%s", $0}')"
+
+          # Notice on a green run, error otherwise, so an informative digest does
+          # not paint red marks over a passing job.
+          level=error
+          [ "${{ job.status }}" = "success" ] && level=notice
+          printf '::%s::%s\n' "$level" "$message"
 
       - name: Tear down
         if: always()
