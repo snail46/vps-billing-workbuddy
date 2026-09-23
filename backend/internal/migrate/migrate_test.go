@@ -1,8 +1,14 @@
 package migrate_test
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"net/url"
 	"os"
 	"testing"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/migrate"
 	"github.com/snail46/vps-billing-workbuddy/backend/migrations"
@@ -45,7 +51,14 @@ func TestDownRequiresPositiveStepCount(t *testing.T) {
 func TestMigrationsApplyForwardAndBackward(t *testing.T) {
 	url := requireDatabaseURL(t)
 
-	runner, err := migrate.Open(url)
+	// The test's whole subject is dropping and re-applying schema, and go test runs
+	// every package's binary at once against this same shared database. Rolling the
+	// commercial tables out from under a package that is reading rows mid-test does
+	// not fail here — it fails there, as a row that vanishes between its insert and
+	// its lookup. A database of this test's own keeps the blast radius its own.
+	probe := provisionProbeDatabase(t, url)
+
+	runner, err := migrate.Open(probe)
 	if err != nil {
 		t.Fatalf("cannot open migration session: %v", err)
 	}
@@ -90,4 +103,49 @@ func TestMigrationsApplyForwardAndBackward(t *testing.T) {
 	if err := runner.Up(); err != nil {
 		t.Fatalf("cannot re-apply migrations: %v", err)
 	}
+}
+
+// provisionProbeDatabase creates a throwaway database beside the shared one and
+// returns a connection URL for it.
+//
+// The connection URL is required to be the postgres:// form, which is what CI and
+// the compose file both set. Creating a database needs CREATEDB, which the compose
+// service's user holds because it owns the cluster.
+func provisionProbeDatabase(t *testing.T, shared string) string {
+	t.Helper()
+
+	parsed, err := url.Parse(shared)
+	if err != nil || parsed.Scheme == "" || parsed.Path == "" {
+		t.Fatalf("TEST_DATABASE_URL is not the postgres:// form this test provisions against: %q", shared)
+	}
+
+	buf := make([]byte, 4)
+	if _, err := rand.Read(buf); err != nil {
+		t.Fatalf("name the probe database: %v", err)
+	}
+	name := "migrate_probe_" + hex.EncodeToString(buf)
+
+	admin := *parsed
+	admin.Path = "/postgres"
+	conn, err := pgx.Connect(context.Background(), admin.String())
+	if err != nil {
+		t.Fatalf("connect to the server to provision the probe database: %v", err)
+	}
+
+	// A leftover from a run that crashed between the create and the drop would make
+	// every later run fail at the create, so the name is cleared first. FORCE ends any
+	// connections a crashed run left behind (PostgreSQL 13+).
+	_, _ = conn.Exec(context.Background(), `DROP DATABASE IF EXISTS `+pgx.Identifier{name}.Sanitize()+` WITH (FORCE)`)
+	if _, err := conn.Exec(context.Background(), `CREATE DATABASE `+pgx.Identifier{name}.Sanitize()); err != nil {
+		_ = conn.Close(context.Background())
+		t.Fatalf("create the probe database: %v", err)
+	}
+
+	probe := *parsed
+	probe.Path = "/" + name
+	t.Cleanup(func() {
+		_, _ = conn.Exec(context.Background(), `DROP DATABASE IF EXISTS `+pgx.Identifier{name}.Sanitize()+` WITH (FORCE)`)
+		_ = conn.Close(context.Background())
+	})
+	return probe.String()
 }

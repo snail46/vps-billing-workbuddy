@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -144,17 +143,6 @@ func (g Gateways) Gateway(name string) (payment.Gateway, error) {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownGateway, name)
 	}
 	return gateway, nil
-}
-
-// Names returns the gateway names, sorted, which is what the webhook routes are
-// mounted under.
-func (g Gateways) Names() []string {
-	names := make([]string, 0, len(g))
-	for name := range g {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
 }
 
 // Service implements the commercial writes.

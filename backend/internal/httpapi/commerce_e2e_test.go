@@ -14,6 +14,7 @@ import (
 
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/authmw"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/money"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/payment/fakegateway"
 )
 
 // The commercial surface end to end, and with it the Gate of Phase 2:
@@ -206,6 +207,22 @@ func placeOrderAndPayment(t *testing.T, e *e2eEnv, entry catalogEntry, cookie *h
 	}
 }
 
+// deliverWebhook posts a callback the way a gateway would: no session, no CSRF, the
+// signature in the header the gateway names.
+func (e *e2eEnv) deliverWebhook(t *testing.T, body, signature string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost,
+		"/api/v1/webhooks/payments/"+testGatewayName, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(e.gateway.SignatureHeader(), signature)
+	req.RemoteAddr = "203.0.113.7:4321"
+
+	rec := httptest.NewRecorder()
+	e.router.ServeHTTP(rec, req)
+	return rec
+}
+
 // count runs a scalar count query, because almost every assertion below is "exactly one
 // of these exists".
 func count(t *testing.T, e *e2eEnv, query string, args ...any) int {
@@ -344,8 +361,7 @@ func TestOrderAndPaymentEndToEnd(t *testing.T) {
 	}
 
 	// ---- the callback ----------------------------------------------------------
-	rec := e.do(t, http.MethodPost, "/api/v1/webhooks/payments/"+testGatewayName,
-		string(order.callback), nil, "")
+	rec := e.deliverWebhook(t, string(order.callback), order.signature)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("the callback was refused: %d (%s)", rec.Code, rec.Body.String())
 	}
@@ -366,8 +382,10 @@ func TestOrderAndPaymentEndToEnd(t *testing.T) {
 
 	// ---- a forged callback is refused and changes nothing ----------------------
 	// The amount is what an attacker would change: a callback for 9900 accepted as one
-	// for 99 is the whole attack. Both forgeries are signed with the wrong key, so the
-	// refusal is the signature's and not the settlement's.
+	// for 99 is the whole attack. Both forgeries are correctly formed and signed —
+	// with the attacker's key, not the platform's — so the refusal is the signature's
+	// and not the parser's, which is the stronger of the two claims.
+	attacker := fakegateway.New("attacker-key-nobody-should-accept")
 	forgeries := []string{
 		strings.Replace(string(order.callback), fmt.Sprintf(`"amount_minor":%d`, order.amountMinor), `"amount_minor":99`, 1),
 		strings.Replace(string(order.callback), `"status":"succeeded"`, `"status":"failed"`, 1),
@@ -376,8 +394,7 @@ func TestOrderAndPaymentEndToEnd(t *testing.T) {
 		if forged == string(order.callback) {
 			t.Fatalf("forgery %d changed nothing; it proves nothing", i)
 		}
-		if rec := e.do(t, http.MethodPost, "/api/v1/webhooks/payments/"+testGatewayName,
-			forged, nil, ""); rec.Code == http.StatusOK {
+		if rec := e.deliverWebhook(t, forged, attacker.Sign([]byte(forged))); rec.Code == http.StatusOK {
 			t.Errorf("forgery %d was accepted", i)
 		}
 	}
@@ -399,8 +416,7 @@ func TestGateTheSameCallbackDeliveredAHundredTimes(t *testing.T) {
 
 	deliver := func(order placedOrder) (settled int, failures []string) {
 		for i := 0; i < 100; i++ {
-			rec := e.do(t, http.MethodPost, "/api/v1/webhooks/payments/"+testGatewayName,
-				string(order.callback), nil, "")
+			rec := e.deliverWebhook(t, string(order.callback), order.signature)
 			if rec.Code != http.StatusOK {
 				failures = append(failures, fmt.Sprintf("delivery %d answered %d", i+1, rec.Code))
 				continue

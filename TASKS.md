@@ -63,14 +63,30 @@
 > 决策见 `docs/adr/ADR-004-identity-sessions-rbac.md`。
 
 ## Phase 2 — Commerce / Finance
-- [ ] products/plans
-- [ ] orders/order snapshots
-- [ ] invoices/payments
-- [ ] wallets/ledger
-- [ ] fake payment provider
-- [ ] transactional outbox
-- [ ] duplicate webhook tests
+- [x] products/plans
+- [x] orders/order snapshots
+- [x] invoices/payments
+- [x] wallets/ledger
+- [x] fake payment provider
+- [x] transactional outbox
+- [x] duplicate webhook tests
 **Gate:** 同一支付回调重复 100 次只入账一次。
+
+> **状态：实现完成，Gate 待 CI 实跑。**
+>
+> 结构：`internal/money`（小写金额 + 币种）、`internal/ledger`（复式记账 + 平衡校验 +
+> 投影接口）、`internal/commerce`（状态机 / 订单快照 / 结算）、
+> `internal/payment` + `internal/payment/fakegateway`（网关端口与假网关）、
+> `internal/storage/commerce`（sqlc 适配器）。
+>
+> **Gate 测试**（`internal/httpapi/commerce_e2e_test.go`，CI-only）：同一回调
+> 顺序 100 次 + 并发 100 次，断言**恰好一次**订单支付、发票支付、
+> ledger 交易（两条平衡分录）与 outbox 事件；伪造回调（改金额 / 改状态）被拒且不动账。
+>
+> 结算是**一次条件 UPDATE**（`status IN ('pending','processing') RETURNING`），
+> 另有三道唯一约束兜底（幂等键、`(gateway, gateway_payment_id)`、
+> ledger 交易引用的部分唯一索引）。
+> 决策见 `docs/adr/ADR-005-commerce-money-and-ledger.md`。
 
 ## Phase 3 — Subscription
 - [ ] lifecycle

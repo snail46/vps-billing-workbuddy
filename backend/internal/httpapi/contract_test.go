@@ -26,6 +26,15 @@ import (
 // contractPath is the path of the contract document, relative to this package.
 const contractPath = "../../../docs/openapi/openapi.yaml"
 
+// pathParameter replaces a placeholder's name with a constant, so the comparison is
+// about the shape of the path and not about what each side calls the variable: chi
+// reports the router's parameter name and the document names it for its readers.
+var pathParameter = regexp.MustCompile(`\{[^}]*\}`)
+
+func normalizePath(path string) string {
+	return pathParameter.ReplaceAllString(path, "{param}")
+}
+
 // documentPaths reads the path keys out of the contract document.
 //
 // A pattern rather than a YAML parser, because the one thing being read — the keys of the
@@ -45,7 +54,7 @@ func documentPaths(t *testing.T) map[string]struct{} {
 
 	paths := make(map[string]struct{}, len(keys))
 	for _, match := range keys {
-		paths[match[1]] = struct{}{}
+		paths[normalizePath(match[1])] = struct{}{}
 	}
 
 	// A guard against the test passing because the parse found nothing, which is what a
@@ -91,7 +100,7 @@ func TestEveryServedRouteIsInTheContract(t *testing.T) {
 
 		// The document's server is the product API, so a product path is recorded without
 		// its prefix while a root-mounted path — a probe — is recorded as it is served.
-		key := strings.TrimPrefix(path, httpapi.BasePath)
+		key := normalizePath(strings.TrimPrefix(path, httpapi.BasePath))
 		if _, ok := documented[key]; !ok {
 			t.Errorf("%s is served but %s is not described in %s; the contract and the "+
 				"implementation have to agree, and the document is the one that gets "+

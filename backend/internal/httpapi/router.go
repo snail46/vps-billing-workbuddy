@@ -204,13 +204,10 @@ func mountCommerce(v1 chi.Router, api *api) {
 	mount(v1, http.MethodPost, "/orders/{orderID}/payments", api.startPayment,
 		sessions.RequireUser, sessions.RequireCSRF)
 
-	// One route per gateway, keyed by the gateway's own name, so adding a provider is
-	// configuration rather than a new endpoint.
-	for _, name := range api.commerce.Gateways.Names() {
-		gateway := name
-		mount(v1, http.MethodPost, "/webhooks/payments/"+gateway, api.paymentWebhook)
-		_ = gateway
-	}
+	// One route for every gateway, named by the URL parameter the handler reads. The
+	// gateways map is still what validates the name at request time — an unknown one
+	// is refused there — so the table does not have to be rebuilt per deployment.
+	mount(v1, http.MethodPost, "/webhooks/payments/{gateway}", api.paymentWebhook)
 }
 
 // mount registers a handler behind the given middleware.

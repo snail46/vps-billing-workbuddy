@@ -241,11 +241,6 @@ paths:
   /products:
     get:
       operationId: listProducts
-      responses:
-        "200": {description: Products}
-  /products:
-    get:
-      operationId: listProducts
       summary: The catalogue
       description: |
         Public: it is what a customer reads before they have an account. Only products

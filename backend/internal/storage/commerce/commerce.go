@@ -307,7 +307,7 @@ func (s *Store) PayOrder(ctx context.Context, orderID uuid.UUID, paidAt time.Tim
 
 func (s *Store) CreateInvoice(ctx context.Context, invoice commerce.Invoice) error {
 	orderID := invoice.OrderID
-	return mapWriteError(s.queries.CreateInvoice(ctx, sqlcgen.CreateInvoiceParams{
+	if err := s.queries.CreateInvoice(ctx, sqlcgen.CreateInvoiceParams{
 		ID:          invoice.ID,
 		InvoiceNo:   invoice.InvoiceNo,
 		UserID:      invoice.UserID,
@@ -315,7 +315,10 @@ func (s *Store) CreateInvoice(ctx context.Context, invoice commerce.Invoice) err
 		Status:      invoice.Status,
 		AmountMinor: invoice.Amount.AmountMinor,
 		Currency:    string(invoice.Amount.Currency),
-	}))
+	}); err != nil {
+		return mapWriteError(err)
+	}
+	return nil
 }
 
 func (s *Store) CreateInvoiceItems(ctx context.Context, invoiceID uuid.UUID, items []commerce.InvoiceItem) error {
@@ -346,7 +349,7 @@ func (s *Store) CreateInvoiceItems(ctx context.Context, invoiceID uuid.UUID, ite
 // ----------------------------------------------------------------- payments --
 
 func (s *Store) CreatePayment(ctx context.Context, p commerce.Payment) error {
-	return mapWriteError(s.queries.CreatePayment(ctx, sqlcgen.CreatePaymentParams{
+	if err := s.queries.CreatePayment(ctx, sqlcgen.CreatePaymentParams{
 		ID:               p.ID,
 		PaymentNo:        p.PaymentNo,
 		OrderID:          p.OrderID,
@@ -356,7 +359,10 @@ func (s *Store) CreatePayment(ctx context.Context, p commerce.Payment) error {
 		AmountMinor:      p.Amount.AmountMinor,
 		Currency:         string(p.Amount.Currency),
 		IdempotencyKey:   p.IdempotencyKey,
-	}))
+	}); err != nil {
+		return mapWriteError(err)
+	}
+	return nil
 }
 
 func (s *Store) FindPaymentByGatewayRef(ctx context.Context, gateway, gatewayPaymentID string) (commerce.Payment, error) {
@@ -443,10 +449,13 @@ func (s *Store) RecordOutboxEvent(ctx context.Context, event commerce.OutboxEven
 
 // mapWriteError turns a uniqueness violation into the domain's conflict.
 //
-// Only a unique violation means "this conflicts with the caller's input". A CHECK
-// violation, a foreign key violation or a connection failure do not, and reporting them
-// as one would tell a caller to change something that is not the problem.
+// It sits on the success path of every write, so nil goes in nil's place: wrapping a
+// nil error would report every successful insert as a failure, and the transaction
+// around it would roll back work that had actually succeeded.
 func mapWriteError(err error) error {
+	if err == nil {
+		return nil
+	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
 		// A payment start is keyed on a derivation, so a collision means the same order

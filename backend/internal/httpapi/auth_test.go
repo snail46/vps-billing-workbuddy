@@ -15,6 +15,7 @@ import (
 
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/audit"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/authmw"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/commerce"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/config"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/health"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/httpapi"
@@ -280,6 +281,13 @@ func newAuthFixture(t *testing.T) *authFixture {
 				Login:      attempts(authmw.ScopeLogin, cfg.RateLimitLoginPerIP, cfg.RateLimitLoginPerAccount),
 				AdminLogin: attempts(authmw.ScopeAdminLogin, cfg.RateLimitLoginPerIP, cfg.RateLimitLoginPerAccount),
 				Register:   attempts(authmw.ScopeRegister, cfg.RateLimitRegisterPerIP, 0),
+			},
+			// The contract walk reads the routing table of the fully assembled router,
+			// which includes the commercial surface. The service's zero value is enough
+			// to mount it: the walk never calls a handler, and a nil service would
+			// mount none of the routes the walk is supposed to see.
+			Commerce: &httpapi.CommerceDeps{
+				Service: &commerce.Service{},
 			},
 		}),
 		store:   store,
