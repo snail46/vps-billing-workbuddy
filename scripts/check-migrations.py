@@ -25,11 +25,14 @@ Usage:
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 MIGRATIONS = "backend/migrations"
 SQLC_CONFIG = "backend/sqlc.yaml"
+VERSION_HELPER = "scripts/expected-migration-version.sh"
 
 failures = 0
 
@@ -101,6 +104,28 @@ def main(argv: list[str]) -> int:
             check(False, f"{SQLC_CONFIG} lists migrations/{name}, which does not exist")
         if listed == set(up_files):
             check(True, f"sqlc is generated from all {len(up_files)} up migrations and nothing else")
+
+    # CI asks scripts/expected-migration-version.sh what version to expect. That
+    # script and this parse disagreed once — it reported "0003" where
+    # golang-migrate records "3" — and the resulting CI failure read like a
+    # migration defect rather than a formatting mismatch. Comparing them here means
+    # the formatting is verified locally, where a mismatch costs nothing.
+    helper = root / VERSION_HELPER
+    if versions and helper.is_file() and shutil.which("bash"):
+        # Forward slashes: the helper is a shell script, and `C:\...` is not a path
+        # to a shell on Windows even though it is one to Python.
+        result = subprocess.run(
+            ["bash", str(helper).replace("\\", "/"), str(migrations_dir).replace("\\", "/")],
+            capture_output=True,
+            text=True,
+        )
+        reported = result.stdout.strip()
+        if result.returncode != 0:
+            check(False, f"{VERSION_HELPER} exited {result.returncode}: {result.stderr.strip()}")
+        else:
+            check(reported == str(versions[-1]),
+                  f"{VERSION_HELPER} reports the expected schema version as a plain integer "
+                  f"({reported!r}, matching the highest migration)")
 
     print()
     if failures:

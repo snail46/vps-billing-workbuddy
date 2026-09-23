@@ -133,11 +133,13 @@ jobs:
       - name: Assert the schema version was recorded
         working-directory: backend
         run: |
-          # The expected version is the highest migration on disk rather than a
-          # literal. A hardcoded number has to be updated by hand whenever a phase
-          # adds a migration, and when it is forgotten the failure looks like a
-          # migration defect instead of a stale assertion.
-          expected="$(ls migrations/*.up.sql | sed 's#.*/##; s/_.*//' | sort -n | tail -1)"
+          # The expected version is derived from the migrations on disk rather than
+          # written as a literal: a literal has to be updated by hand whenever a
+          # phase adds a migration, and when it is forgotten the failure looks like
+          # a migration defect instead of a stale assertion. The derivation lives in
+          # one script because it previously appeared twice, and the second copy
+          # compared "0003" against the "3" that golang-migrate reports.
+          expected="$(bash ../scripts/expected-migration-version.sh migrations)"
           version="$(go run ./cmd/migrate version)"
           echo "reported schema version: '${version}' (highest migration on disk: ${expected})"
           if [ "${version}" != "${expected}" ]; then
@@ -347,12 +349,13 @@ jobs:
       # guaranteed to exist, using two single-quoted queries rather than one
       # nested-quoting construction.
       #
-      # The expected version is derived from the migrations on disk for the same
-      # reason as in the integration job: a literal would silently go stale.
+      # The expected version comes from the shared script for the same reason as in
+      # the integration job: a literal goes stale, and a second copy of the
+      # derivation drifts.
       - name: Assert the schema is migrated and clean
         run: |
           compose="docker compose --env-file .env -f deploy/docker-compose.yml"
-          expected="$(ls backend/migrations/*.up.sql | sed 's#.*/##; s/_.*//' | sort -n | tail -1)"
+          expected="$(bash scripts/expected-migration-version.sh backend/migrations)"
           version="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c 'SELECT version FROM schema_migrations;' | tr -d '\r')"
           dirty="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c 'SELECT dirty FROM schema_migrations;' | tr -d '\r')"
           echo "schema_migrations: version=${version} dirty=${dirty} (highest migration on disk: ${expected})"
