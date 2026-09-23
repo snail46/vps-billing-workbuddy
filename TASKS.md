@@ -47,18 +47,19 @@
 - [x] audit foundation
 - [x] zh-CN/en-US
 
-> **状态：实现完成；库表部分已由 CI 实证，HTTP 面待 CI 复验。**
+> **状态：已关闭。** CI run #14（提交 `b207c47`）五个 job 全绿。
 >
-> `0002_identity` / `0003_identity_rbac_seed` 已在真实 PostgreSQL 上前滚+回滚
-> （CI `backend-integration`，`migrations applied, version: 3`），身份表与种子数据
-> 由 Gate 断言。
+> 已由 CI 实证的部分：
+> - 迁移在真实 PostgreSQL 上前滚+回滚（`migrations applied, version: 3`），身份表与种子
+>   由 Gate 断言（7 张表 / 5 角色 / 27 权限 / 授权行数）。
+> - `TEST_DATABASE_URL` 门控的集成测试：身份语句往返、真实唯一约束映射为地址冲突、
+>   CHECK 约束不被误报为冲突、`super_admin`/`read_only` 权限集合、审计行落库。
+> - `TEST_REDIS_URL` 门控的集成测试：会话往返与过期、跨身份空间拒绝、按 subject 撤销、
+>   限流计数与窗口。
+> - 端到端（HTTP + 真实 PG/Redis）：注册→登录→`/me`→登出后会话失效、
+>   停用即时生效、管理员登录解析权限并写入审计、重复失败登录被限流。
 >
-> 认证 HTTP 面（`/auth/*`、`/admin/auth/*`）在本地 32 项检查全绿，其中
-> `internal/httpapi` 覆盖处理器与中间件链、`internal/authmw` 覆盖会话/CSRF/权限/限流。
-> Redis 会话存储与限流计数的真实往返由 `TEST_REDIS_URL` 门控的集成测试覆盖，只在 CI 执行。
->
-> **Phase 1 未定义任何页面**（属 Phase 8/9）。i18n 只补了错误键。
->
+> **Phase 1 未定义任何页面**（属 Phase 8/9）；i18n 只补了错误键。
 > 决策见 `docs/adr/ADR-004-identity-sessions-rbac.md`。
 
 ## Phase 2 — Commerce / Finance

@@ -44,9 +44,154 @@ type AuditEvent struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
+type Invoice struct {
+	ID             uuid.UUID          `json:"id"`
+	InvoiceNo      string             `json:"invoice_no"`
+	UserID         uuid.UUID          `json:"user_id"`
+	SubscriptionID *uuid.UUID         `json:"subscription_id"`
+	OrderID        *uuid.UUID         `json:"order_id"`
+	Status         string             `json:"status"`
+	AmountMinor    int64              `json:"amount_minor"`
+	Currency       string             `json:"currency"`
+	DueAt          pgtype.Timestamptz `json:"due_at"`
+	PaidAt         pgtype.Timestamptz `json:"paid_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type InvoiceItem struct {
+	ID              uuid.UUID          `json:"id"`
+	InvoiceID       uuid.UUID          `json:"invoice_id"`
+	DescriptionI18n []byte             `json:"description_i18n"`
+	Quantity        int32              `json:"quantity"`
+	UnitAmountMinor int64              `json:"unit_amount_minor"`
+	TotalMinor      int64              `json:"total_minor"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
+type LedgerEntry struct {
+	ID            uuid.UUID          `json:"id"`
+	TransactionID uuid.UUID          `json:"transaction_id"`
+	AccountType   string             `json:"account_type"`
+	AccountID     uuid.UUID          `json:"account_id"`
+	Direction     string             `json:"direction"`
+	AmountMinor   int64              `json:"amount_minor"`
+	Currency      string             `json:"currency"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type LedgerTransaction struct {
+	ID            uuid.UUID          `json:"id"`
+	Type          string             `json:"type"`
+	ReferenceType pgtype.Text        `json:"reference_type"`
+	ReferenceID   *uuid.UUID         `json:"reference_id"`
+	Description   pgtype.Text        `json:"description"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type NodeGroup struct {
+	ID        uuid.UUID          `json:"id"`
+	Name      string             `json:"name"`
+	Region    string             `json:"region"`
+	Status    string             `json:"status"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Order struct {
+	ID            uuid.UUID          `json:"id"`
+	OrderNo       string             `json:"order_no"`
+	UserID        uuid.UUID          `json:"user_id"`
+	Status        string             `json:"status"`
+	SubtotalMinor int64              `json:"subtotal_minor"`
+	DiscountMinor int64              `json:"discount_minor"`
+	TotalMinor    int64              `json:"total_minor"`
+	Currency      string             `json:"currency"`
+	PaidAt        pgtype.Timestamptz `json:"paid_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type OrderItem struct {
+	ID              uuid.UUID          `json:"id"`
+	OrderID         uuid.UUID          `json:"order_id"`
+	ProductID       uuid.UUID          `json:"product_id"`
+	PlanID          uuid.UUID          `json:"plan_id"`
+	Quantity        int32              `json:"quantity"`
+	UnitPriceMinor  int64              `json:"unit_price_minor"`
+	TotalMinor      int64              `json:"total_minor"`
+	ProductSnapshot []byte             `json:"product_snapshot"`
+	PlanSnapshot    []byte             `json:"plan_snapshot"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
+type OutboxEvent struct {
+	ID            uuid.UUID          `json:"id"`
+	EventType     string             `json:"event_type"`
+	AggregateType string             `json:"aggregate_type"`
+	AggregateID   uuid.UUID          `json:"aggregate_id"`
+	Payload       []byte             `json:"payload"`
+	Status        string             `json:"status"`
+	Attempts      int32              `json:"attempts"`
+	NextAttemptAt pgtype.Timestamptz `json:"next_attempt_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	PublishedAt   pgtype.Timestamptz `json:"published_at"`
+}
+
+type Payment struct {
+	ID               uuid.UUID          `json:"id"`
+	PaymentNo        string             `json:"payment_no"`
+	OrderID          uuid.UUID          `json:"order_id"`
+	Gateway          string             `json:"gateway"`
+	GatewayPaymentID pgtype.Text        `json:"gateway_payment_id"`
+	Status           string             `json:"status"`
+	AmountMinor      int64              `json:"amount_minor"`
+	Currency         string             `json:"currency"`
+	IdempotencyKey   string             `json:"idempotency_key"`
+	GatewayPayload   []byte             `json:"gateway_payload"`
+	PaidAt           pgtype.Timestamptz `json:"paid_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Permission struct {
 	ID  uuid.UUID `json:"id"`
 	Key string    `json:"key"`
+}
+
+type Plan struct {
+	ID             uuid.UUID          `json:"id"`
+	ProductID      uuid.UUID          `json:"product_id"`
+	NodeGroupID    *uuid.UUID         `json:"node_group_id"`
+	Slug           string             `json:"slug"`
+	NameI18n       []byte             `json:"name_i18n"`
+	Status         string             `json:"status"`
+	CpuCores       pgtype.Numeric     `json:"cpu_cores"`
+	MemoryMb       int32              `json:"memory_mb"`
+	DiskGb         int32              `json:"disk_gb"`
+	TrafficGb      pgtype.Int8        `json:"traffic_gb"`
+	BandwidthMbps  pgtype.Int4        `json:"bandwidth_mbps"`
+	Ipv4Count      int32              `json:"ipv4_count"`
+	Ipv6Count      int32              `json:"ipv6_count"`
+	NatPortCount   int32              `json:"nat_port_count"`
+	Virtualization string             `json:"virtualization"`
+	BillingCycle   string             `json:"billing_cycle"`
+	PriceMinor     int64              `json:"price_minor"`
+	Currency       string             `json:"currency"`
+	StockMode      string             `json:"stock_mode"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Product struct {
+	ID              uuid.UUID          `json:"id"`
+	Slug            string             `json:"slug"`
+	NameI18n        []byte             `json:"name_i18n"`
+	DescriptionI18n []byte             `json:"description_i18n"`
+	Status          string             `json:"status"`
+	SortOrder       int32              `json:"sort_order"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Role struct {
@@ -61,6 +206,26 @@ type RolePermission struct {
 	PermissionID uuid.UUID `json:"permission_id"`
 }
 
+type Subscription struct {
+	ID                 uuid.UUID          `json:"id"`
+	UserID             uuid.UUID          `json:"user_id"`
+	PlanID             uuid.UUID          `json:"plan_id"`
+	Status             string             `json:"status"`
+	BillingCycle       string             `json:"billing_cycle"`
+	PriceMinor         int64              `json:"price_minor"`
+	Currency           string             `json:"currency"`
+	StartedAt          pgtype.Timestamptz `json:"started_at"`
+	CurrentPeriodStart pgtype.Timestamptz `json:"current_period_start"`
+	CurrentPeriodEnd   pgtype.Timestamptz `json:"current_period_end"`
+	NextDueAt          pgtype.Timestamptz `json:"next_due_at"`
+	GraceUntil         pgtype.Timestamptz `json:"grace_until"`
+	CancelAtPeriodEnd  bool               `json:"cancel_at_period_end"`
+	EndedAt            pgtype.Timestamptz `json:"ended_at"`
+	Version            int64              `json:"version"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
 type User struct {
 	ID              uuid.UUID          `json:"id"`
 	Email           string             `json:"email"`
@@ -72,4 +237,13 @@ type User struct {
 	LastLoginAt     pgtype.Timestamptz `json:"last_login_at"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Wallet struct {
+	ID                    uuid.UUID          `json:"id"`
+	UserID                uuid.UUID          `json:"user_id"`
+	Currency              string             `json:"currency"`
+	AvailableBalanceMinor int64              `json:"available_balance_minor"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
 }

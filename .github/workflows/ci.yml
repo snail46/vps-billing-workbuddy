@@ -404,7 +404,15 @@ jobs:
       # The migration state alone would be satisfied by migrations that create
       # nothing. This asserts that the identity objects of Phase 1 are actually
       # present in the running environment.
-      - name: Assert the identity schema and seed data exist
+      # The Gate asserts the schema the migrations claim to have created, rather than
+      # trusting that `migrate` exiting 0 means it did anything. Without this, a
+      # migration containing only comments would pass.
+      #
+      # Each phase extends the list with the tables it owns. The counts are literals
+      # on purpose here, unlike the schema version: a table that goes missing is the
+      # thing being detected, so deriving the expectation from the same files under
+      # test would defeat it.
+      - name: Assert the schema and seed data exist
         run: |
           compose="docker compose --env-file .env -f deploy/docker-compose.yml"
           query="SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('users','admins','roles','permissions','admin_roles','role_permissions','audit_events');"
@@ -423,6 +431,35 @@ jobs:
           echo "role_permissions=${grants}"
           if [ "${grants}" -lt "27" ]; then
             echo "::error::the seeded roles hold fewer grants than super_admin alone should have (${grants})"
+            exit 1
+          fi
+
+          commerce_query="SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('node_groups','products','plans','orders','order_items','payments','wallets','ledger_transactions','ledger_entries','outbox_events','subscriptions','invoices','invoice_items');"
+          commerce="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c "$commerce_query" | tr -d '\r')"
+          echo "commerce tables=${commerce}"
+          if [ "${commerce}" != "13" ]; then
+            echo "::error::expected 13 commercial tables; got ${commerce}"
+            exit 1
+          fi
+
+          # The constraints that carry the invariants are asserted by name, because a
+          # table that exists without them looks identical in a table count and is
+          # missing the thing the phase decided. `email = lower(email)` is what makes
+          # the plain UNIQUE constraint on an address sufficient (ADR-004); the
+          # ledger reference index is the structural half of the idempotency decision
+          # (ADR-005), so if it silently failed to create, the Gate's own duplicate
+          # delivery check would be the only thing left holding it.
+          constraints="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c "SELECT count(*) FROM pg_constraint WHERE conname IN ('users_email_normalized','admins_email_normalized','ledger_entries_direction_known','ledger_entries_account_type_known','invoices_has_an_origin','orders_total_is_subtotal_less_discount');" | tr -d '\r')"
+          echo "named constraints=${constraints}"
+          if [ "${constraints}" != "6" ]; then
+            echo "::error::expected 6 named constraints; got ${constraints}"
+            exit 1
+          fi
+
+          index_count="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c "SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('ux_payments_gateway_external','ux_ledger_transactions_reference','ix_outbox_events_pending');" | tr -d '\r')"
+          echo "named indexes=${index_count}"
+          if [ "${index_count}" != "3" ]; then
+            echo "::error::expected 3 named indexes; got ${index_count}"
             exit 1
           fi
 
