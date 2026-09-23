@@ -158,8 +158,10 @@ fi
 if [ -n "$python_bin" ]; then
   # A relative path, for the same reason as above.
   run "compose structure" "$python_bin" scripts/check-compose.py
+  run "migration history" "$python_bin" scripts/check-migrations.py
 else
   skip "compose structure (no python interpreter)"
+  skip "migration history (no python interpreter)"
 fi
 
 printf '\n'

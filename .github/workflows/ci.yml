@@ -133,10 +133,15 @@ jobs:
       - name: Assert the schema version was recorded
         working-directory: backend
         run: |
+          # The expected version is the highest migration on disk rather than a
+          # literal. A hardcoded number has to be updated by hand whenever a phase
+          # adds a migration, and when it is forgotten the failure looks like a
+          # migration defect instead of a stale assertion.
+          expected="$(ls migrations/*.up.sql | sed 's#.*/##; s/_.*//' | sort -n | tail -1)"
           version="$(go run ./cmd/migrate version)"
-          echo "reported schema version: '${version}'"
-          if [ "${version}" != "1" ]; then
-            echo "::error::expected the schema to be at version 1, got '${version}'"
+          echo "reported schema version: '${version}' (highest migration on disk: ${expected})"
+          if [ "${version}" != "${expected}" ]; then
+            echo "::error::expected the schema to be at version ${expected}, got '${version}'"
             exit 1
           fi
 
@@ -341,14 +346,43 @@ jobs:
       # Reads the migration state from inside the container, where psql is
       # guaranteed to exist, using two single-quoted queries rather than one
       # nested-quoting construction.
+      #
+      # The expected version is derived from the migrations on disk for the same
+      # reason as in the integration job: a literal would silently go stale.
       - name: Assert the schema is migrated and clean
         run: |
           compose="docker compose --env-file .env -f deploy/docker-compose.yml"
+          expected="$(ls backend/migrations/*.up.sql | sed 's#.*/##; s/_.*//' | sort -n | tail -1)"
           version="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c 'SELECT version FROM schema_migrations;' | tr -d '\r')"
           dirty="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c 'SELECT dirty FROM schema_migrations;' | tr -d '\r')"
-          echo "schema_migrations: version=${version} dirty=${dirty}"
-          if [ "${version}" != "1" ] || [ "${dirty}" != "f" ]; then
-            echo "::error::unexpected migration state: version=${version} dirty=${dirty}"
+          echo "schema_migrations: version=${version} dirty=${dirty} (highest migration on disk: ${expected})"
+          if [ "${version}" != "${expected}" ] || [ "${dirty}" != "f" ]; then
+            echo "::error::unexpected migration state: version=${version} dirty=${dirty} expected=${expected}"
+            exit 1
+          fi
+
+      # The migration state alone would be satisfied by migrations that create
+      # nothing. This asserts that the identity objects of Phase 1 are actually
+      # present in the running environment.
+      - name: Assert the identity schema and seed data exist
+        run: |
+          compose="docker compose --env-file .env -f deploy/docker-compose.yml"
+          query="SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('users','admins','roles','permissions','admin_roles','role_permissions','audit_events');"
+          tables="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c "$query" | tr -d '\r')"
+          roles="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c 'SELECT count(*) FROM roles;' | tr -d '\r')"
+          permissions="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c 'SELECT count(*) FROM permissions;' | tr -d '\r')"
+          echo "identity tables=${tables} roles=${roles} permissions=${permissions}"
+          if [ "${tables}" != "7" ] || [ "${roles}" != "5" ] || [ "${permissions}" != "27" ]; then
+            echo "::error::expected 7 identity tables, 5 roles and 27 permissions; got ${tables}, ${roles}, ${permissions}"
+            exit 1
+          fi
+
+          # A seeded role with no permissions is silently useless, so at least one
+          # grant is asserted rather than merely counting rows.
+          grants="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c 'SELECT count(*) FROM role_permissions;' | tr -d '\r')"
+          echo "role_permissions=${grants}"
+          if [ "${grants}" -lt "27" ]; then
+            echo "::error::the seeded roles hold fewer grants than super_admin alone should have (${grants})"
             exit 1
           fi
 

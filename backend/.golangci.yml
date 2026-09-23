@@ -45,6 +45,12 @@ linters:
       - comments
       - std-error-handling
       - common-false-positives
+    # sqlc output. It carries a `Code generated … DO NOT EDIT.` header, which the
+    # default `generated: lax` already skips, but the directory is named
+    # explicitly too, so that a change to the header or to that default cannot turn
+    # a sqlc upgrade into a lint failure over code nobody wrote by hand.
+    paths:
+      - internal/db/sqlcgen
     rules:
       # Test files legitimately repeat setup, ignore some unparam findings and
       # use fixtures that trip gosec's heuristics. noctx and the unused-parameter

@@ -11,21 +11,33 @@
 - [x] CI
 **Gate:** 一条 compose 命令启动基础环境。
 
-> **状态：实现完成，Gate 待 CI 实跑，Phase 0 尚未关闭。**
+> **状态：已关闭。Gate 已在 CI 真实通过（run #5，commit `5d891a0`）。**
 >
-> 上述 8 项已实现，并通过 `scripts/verify-local.sh` 在本机验证
-> （gofmt / vet / golangci-lint / build / unit test / typecheck / lint / test / build）。
+> 5 个 job 全部 success，其中 `foundation-gate` 执行序列与耗时：
+> `docker compose up -d --build`（**57 秒**）→ `/health/live` → `/health/ready`
+> （断言 postgres 与 redis 均 up）→ `migrate` 退出码 0 → `schema_migrations`
+> 为 `version=1 dirty=f` → 两个前端 3000/3001 返回 200 → `down -v`。
+> 该 job 无 `continue-on-error`。
 >
-> Gate 由 CI 的 `foundation-gate` job **真实执行**：
-> `docker compose up -d --build` → 探活 `/health/live` 与 `/health/ready`
-> → 校验 `migrate` 退出码与 `schema_migrations` 状态 → 两个前端返回 200 → 拆除。
-> 该 job 无 `continue-on-error`，未通过即失败。
+> 关闭前修掉三个真实缺陷（详见各 commit 与 `ADR-003`）：
 >
-> **本机无 Docker 且 WSL 被安全策略禁用，因此 Gate 无法在本地执行**；
-> 首次 push 触发 CI 并通过后，Phase 0 方可关闭并进入 Phase 1。
-> 详见 `docs/adr/ADR-003-foundation-topology-and-gate.md`。
+> 1. 集成测试从**日志记录**读 schema 版本，而 job 设 `LOG_LEVEL=warn` 抑制了 INFO →
+>    改为从 stdout 读命令**结果**。
+> 2. 两个前端镜像**没有 COPY** `frontend/tsconfig.base.json`，而所有 tsconfig
+>    `extends` 它 → 镜像内 `tsc` 报 `TS5083` 并级联 `TS6142/TS17004`。
+> 3. `backend/Dockerfile` 用 `ENTRYPOINT ["/app/server"]` 而 compose 用 `command`
+>    选择二进制（**compose 覆盖 CMD、却追加到 ENTRYPOINT**）→ migrate 容器实际执行
+>    `/app/server /app/migrate up`，起来的是 API 且永不退出，所有
+>    `service_completed_successfully` 的依赖者永久等待。**全程无任何 error**，
+>    表现为静默挂死 24 分钟。
 >
-> 架构决策：`ADR-001`（后端栈）、`ADR-002`（前端栈）、`ADR-003`（拓扑与 Gate）。
+> 由此新增两个本地守门（`scripts/check-docker-context.py`、
+> `scripts/check-compose.py`，均由 `scripts/verify-local.sh` 调用），
+> 并把 Gate 的 compose 命令外包 `timeout 480`、job 级 `timeout-minutes: 20`
+> 且加入 `if: always()` 的 digest（取消/超时也会发布耗时归因）。
+>
+> 本机无 Docker 且 WSL 被安全策略禁用，Gate 只能在 CI 执行；本地项由
+> `bash scripts/verify-local.sh` 覆盖。架构决策见 `ADR-001` / `ADR-002` / `ADR-003`。
 
 ## Phase 1 — Identity / RBAC
 - [ ] users/admins
