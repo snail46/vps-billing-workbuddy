@@ -16,15 +16,15 @@ import (
 
 // Operation statuses — docs/05's machine.
 const (
-	StatusQueued           = "queued"
-	StatusRunning          = "running"
-	StatusWaitingProvider  = "waiting_provider"
-	StatusWaitingResource  = "waiting_resource"
-	StatusVerifying        = "verifying"
-	StatusRetrying         = "retrying"
-	StatusSucceeded        = "succeeded"
-	StatusFailed           = "failed"
-	StatusCancelled        = "cancelled"
+	StatusQueued          = "queued"
+	StatusRunning         = "running"
+	StatusWaitingProvider = "waiting_provider"
+	StatusWaitingResource = "waiting_resource"
+	StatusVerifying       = "verifying"
+	StatusRetrying        = "retrying"
+	StatusSucceeded       = "succeeded"
+	StatusFailed          = "failed"
+	StatusCancelled       = "cancelled"
 )
 
 // Step statuses.
@@ -142,25 +142,25 @@ const ReservationExpiry = 15 * time.Minute
 
 // Operation is one long action the platform is performing for a resource.
 type Operation struct {
-	ID                uuid.UUID
-	Type              string
-	ResourceType      string
-	ResourceID        uuid.UUID
-	Status            string
-	Phase             *string
-	Progress          int
-	MessageKey        *string
-	ProviderID        *uuid.UUID
+	ID                  uuid.UUID
+	Type                string
+	ResourceType        string
+	ResourceID          uuid.UUID
+	Status              string
+	Phase               *string
+	Progress            int
+	MessageKey          *string
+	ProviderID          *uuid.UUID
 	ProviderOperationID *string
-	IdempotencyKey    string
-	Retryable         bool
-	RetryCount        int
-	MaxRetries        int
-	ErrorCode         *string
-	ErrorMessage      *string
-	TraceID           string
-	StartedAt         *time.Time
-	FinishedAt        *time.Time
+	IdempotencyKey      string
+	Retryable           bool
+	RetryCount          int
+	MaxRetries          int
+	ErrorCode           *string
+	ErrorMessage        *string
+	TraceID             string
+	StartedAt           *time.Time
+	FinishedAt          *time.Time
 }
 
 // Step is one named stage of the workflow behind an operation.
