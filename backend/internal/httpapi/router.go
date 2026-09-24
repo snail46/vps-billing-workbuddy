@@ -22,6 +22,7 @@ import (
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/httpx"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/identity"
 	bmw "github.com/snail46/vps-billing-workbuddy/backend/internal/middleware"
+	operationstore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/operation"
 )
 
 // BasePath is the prefix of the product API, per docs/08-API-CONTRACT.md.
@@ -54,6 +55,8 @@ type Deps struct {
 	Commerce *CommerceDeps
 	// Infra is the infrastructure surface's store.
 	Infra *InfraDeps
+	// Operations is the operation system's store.
+	Operations *operationstore.Store
 }
 
 // Handler is the assembled HTTP surface.
@@ -126,7 +129,7 @@ func NewRouter(deps Deps) *Handler {
 	}))
 	r.Use(bmw.CORS(deps.Config.AllowedOrigins()))
 
-	api := &api{logger: logger, auth: deps.Auth, commerce: deps.Commerce, infra: deps.Infra}
+	api := &api{logger: logger, auth: deps.Auth, commerce: deps.Commerce, infra: deps.Infra, operations: &OperationsDeps{Store: deps.Operations}}
 
 	// Router-level handlers cover paths that match no route at all, so the
 	// envelope holds even for a malformed URL.
@@ -231,10 +234,11 @@ func mount(r chi.Router, method, pattern string, handler http.HandlerFunc, chain
 
 // api carries the collaborators shared by the contract-level handlers.
 type api struct {
-	logger   *slog.Logger
-	auth     *Auth
-	commerce *CommerceDeps
-	infra    *InfraDeps
+	logger     *slog.Logger
+	auth       *Auth
+	commerce   *CommerceDeps
+	infra      *InfraDeps
+	operations *OperationsDeps
 }
 
 func (a *api) notFound(w http.ResponseWriter, r *http.Request) {

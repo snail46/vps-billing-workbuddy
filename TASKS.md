@@ -161,11 +161,39 @@
 > Gate 断言同步：tables 13→15、constraints 6→7、indexes 5→6。
 
 ## Phase 5 — Operation System
-- [ ] operations/steps
-- [ ] queue/worker
-- [ ] retries
-- [ ] SSE
-- [ ] OperationProgress component
+- [x] operations/steps
+- [x] queue/worker
+- [x] retries
+- [x] SSE
+- [x] OperationProgress component
+
+> **状态：实现完成，本地全量验证通过；CI 待复验。**
+>
+> **ADR-008**：数据库即队列（`FOR UPDATE SKIP LOCKED` 认领，N worker 互不等待）；
+> **引擎独占状态机**——执行上下文不提供状态转移方法，Run 返回 nil 即引擎收口
+> succeeded，错误按 `StepFailure.Retry` 分类 + 指数退避（2s 起步封顶 60s）；
+> 进度**只**由 `SyncOperationProgress` 从 steps 推导（phase setter 连 progress
+> 参数都没有，docs/07 的"不按时间伪造"由 schema 强制）。
+>
+> **预留修正（ADR-008 §5 修正 ADR-007 §2）**：参考 schema 确有
+> `resource_reservations` 表——预留是**持久化回执**（按 operation 键控、带
+> expires_at、部分唯一索引保证每操作至多一张开放回执），计数器与回执同事务。
+> 死 worker 的容量承诺由 sweep 释放（SKIP LOCKED 批量认领）。
+>
+> **Outbox 投递**（Phase 2 ADR-005 移交给本阶段）：按注册的 event type 认领
+> 到期事件，无 handler 的事件类型留在 pending（丢弃即静默失败）；
+> 失败按操作退避重试，消费者按 event_id 去重。
+>
+> SSE：`GET /admin/operations/{id}`（记录+steps）与
+> `GET /admin/operations/events?operation_id=`（按秒读行、变更才推、
+> 终态即断流），docs/09 信封 `operation.updated.v1`。
+> 前端 `OperationProgress`（shared/ui）：状态徽标+派生进度条+步骤清单，
+> 双语键齐全，等待态=warning、取消=neutral。
+>
+> 0007 修订（pre-Gate）：加 `run_after` 列承载退避（updated_at 每写都动，
+> 两个语义会互相污染——曾致退避完全失效）；retrying 允许携带 error_code。
+
+## Phase 6 — Provision Vertical Slice
 
 ## Phase 6 — Provision Vertical Slice
 - [ ] paid order → subscription

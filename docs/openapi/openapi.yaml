@@ -590,6 +590,35 @@ paths:
         "403": {description: The administrator does not hold the permission}
         "404": {description: No such subscription}
         "409": {description: The subscription has already ended}
+  /admin/operations/{id}:
+    get:
+      operationId: getOperation
+      summary: One operation and its steps
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: The operation's record
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OperationDetailResponse"}
+        "403": {description: The administrator does not hold operations.read}
+  /admin/operations/events:
+    get:
+      operationId: streamOperationEvents
+      summary: An operation's Server-Sent-Events stream
+      parameters:
+        - name: operation_id
+          in: query
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: SSE
+          content:
+            text/event-stream:
+              schema: {type: string}
+        "403": {description: The administrator does not hold operations.read}
   /admin/providers:
     get:
       operationId: listProviders
@@ -930,6 +959,59 @@ components:
         cancel_at_period_end: {type: boolean}
         ended_at: {type: string, format: date-time, nullable: true}
         version: {type: integer, format: int64}
+    OperationDetailResponse:
+      type: object
+      required: [success, data, request_id]
+      properties:
+        success: {type: boolean, const: true}
+        request_id: {type: string}
+        data: {$ref: "#/components/schemas/OperationDetail"}
+    OperationDetail:
+      type: object
+      required: [operation, steps]
+      properties:
+        operation: {$ref: "#/components/schemas/AdminOperation"}
+        steps:
+          type: array
+          items: {$ref: "#/components/schemas/AdminOperationStep"}
+    AdminOperation:
+      type: object
+      required: [id, type, resource_type, resource_id, status, progress,
+                 retry_count, max_retries, trace_id, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        type: {type: string}
+        resource_type: {type: string}
+        resource_id: {type: string, format: uuid}
+        status:
+          type: string
+          enum: [queued, running, waiting_provider, waiting_resource,
+                 verifying, retrying, succeeded, failed, cancelled]
+        phase: {type: string, nullable: true}
+        progress: {type: integer, minimum: 0, maximum: 100}
+        message_key: {type: string, nullable: true}
+        provider_operation_id: {type: string, nullable: true}
+        retry_count: {type: integer}
+        max_retries: {type: integer}
+        error_code: {type: string, nullable: true}
+        error_message: {type: string, nullable: true}
+        trace_id: {type: string}
+        started_at: {type: string, format: date-time, nullable: true}
+        finished_at: {type: string, format: date-time, nullable: true}
+        created_at: {type: string, format: date-time}
+    AdminOperationStep:
+      type: object
+      required: [key, order, status, progress, attempt]
+      properties:
+        key: {type: string}
+        order: {type: integer}
+        status: {type: string, enum: [pending, running, succeeded, failed, skipped]}
+        progress: {type: integer, minimum: 0, maximum: 100}
+        attempt: {type: integer}
+        error_code: {type: string, nullable: true}
+        error_message: {type: string, nullable: true}
+        started_at: {type: string, format: date-time, nullable: true}
+        finished_at: {type: string, format: date-time, nullable: true}
     AdminProvider:
       type: object
       required: [id, name, type, status]

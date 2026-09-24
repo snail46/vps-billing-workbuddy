@@ -18,6 +18,11 @@ CREATE TABLE operations (
   retryable boolean NOT NULL DEFAULT false,
   retry_count integer NOT NULL DEFAULT 0,
   max_retries integer NOT NULL DEFAULT 0,
+  -- When a parked retry may be claimed again. The backoff lives here rather
+  -- than being re-derived from updated_at, because updated_at moves on every
+  -- write and the two meanings would collide (a phase note would restart the
+  -- backoff, a claim would look due because someone renamed a phase).
+  run_after timestamptz,
   error_code varchar(128),
   error_message text,
   trace_id varchar(255) NOT NULL,
@@ -29,9 +34,16 @@ CREATE TABLE operations (
     status IN ('queued', 'running', 'waiting_provider', 'waiting_resource',
                'verifying', 'retrying', 'succeeded', 'failed', 'cancelled')
   ),
-  -- A failure that cannot be named cannot be supported (AGENTS.md: 0 silent failure).
+  -- A failure that cannot be named cannot be supported (AGENTS.md: 0 silent
+  -- failure). `failed` must name its error; `retrying` may carry the code of the
+  -- attempt it is waiting to repeat — an operator reading the queue sees why it
+  -- is there; every other state carries no stale code.
   CONSTRAINT operations_failure_has_a_code CHECK (
-    (status = 'failed') = (error_code IS NOT NULL)
+    CASE
+      WHEN status = 'failed' THEN error_code IS NOT NULL
+      WHEN status = 'retrying' THEN TRUE
+      ELSE error_code IS NULL
+    END
   ),
   -- A finished operation carries its finish time, and a live one has none yet.
   CONSTRAINT operations_finished_at_matches_status CHECK (

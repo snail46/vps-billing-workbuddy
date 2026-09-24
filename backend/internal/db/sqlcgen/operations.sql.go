@@ -42,10 +42,7 @@ WHERE id = (
   FOR UPDATE SKIP LOCKED
   LIMIT 1
 )
-RETURNING id, type, resource_type, resource_id, status, phase, progress,
-          message_key, provider_id, provider_operation_id, idempotency_key,
-          retryable, retry_count, max_retries, error_code, error_message,
-          trace_id, started_at, finished_at, created_at, updated_at
+RETURNING id, type, resource_type, resource_id, status, phase, progress, message_key, provider_id, provider_operation_id, idempotency_key, retryable, retry_count, max_retries, run_after, error_code, error_message, trace_id, started_at, finished_at, created_at, updated_at
 `
 
 // The claim: one worker takes one queued operation. SKIP LOCKED means N workers
@@ -68,6 +65,7 @@ func (q *Queries) ClaimQueuedOperation(ctx context.Context, startedAt pgtype.Tim
 		&i.Retryable,
 		&i.RetryCount,
 		&i.MaxRetries,
+		&i.RunAfter,
 		&i.ErrorCode,
 		&i.ErrorMessage,
 		&i.TraceID,
@@ -81,29 +79,30 @@ func (q *Queries) ClaimQueuedOperation(ctx context.Context, startedAt pgtype.Tim
 
 const claimRetryableOperation = `-- name: ClaimRetryableOperation :one
 UPDATE operations
-SET status = 'running', started_at = COALESCE(started_at, $1), updated_at = $1
+SET status = 'running', started_at = COALESCE(started_at, $1), updated_at = $1,
+    -- The new attempt has not failed yet: the previous code cleared here is the
+    -- one the row showed while it waited, and the runner records a fresh one if
+    -- this attempt fails too.
+    error_code = NULL, error_message = NULL
 WHERE id = (
   SELECT o.id FROM operations o
-  WHERE o.status = 'retrying' AND o.updated_at <= $2
+  WHERE o.status = 'retrying' AND o.run_after <= $2
   ORDER BY o.updated_at
   FOR UPDATE SKIP LOCKED
   LIMIT 1
 )
-RETURNING id, type, resource_type, resource_id, status, phase, progress,
-          message_key, provider_id, provider_operation_id, idempotency_key,
-          retryable, retry_count, max_retries, error_code, error_message,
-          trace_id, started_at, finished_at, created_at, updated_at
+RETURNING id, type, resource_type, resource_id, status, phase, progress, message_key, provider_id, provider_operation_id, idempotency_key, retryable, retry_count, max_retries, run_after, error_code, error_message, trace_id, started_at, finished_at, created_at, updated_at
 `
 
 type ClaimRetryableOperationParams struct {
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-	UpdatedAt_2 pgtype.Timestamptz `json:"updated_at_2"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	RunAfter  pgtype.Timestamptz `json:"run_after"`
 }
 
 // The claim of a retry whose backoff has elapsed: the machine edge
 // retrying → running, with the attempt count already on the row.
 func (q *Queries) ClaimRetryableOperation(ctx context.Context, arg ClaimRetryableOperationParams) (Operation, error) {
-	row := q.db.QueryRow(ctx, claimRetryableOperation, arg.UpdatedAt, arg.UpdatedAt_2)
+	row := q.db.QueryRow(ctx, claimRetryableOperation, arg.UpdatedAt, arg.RunAfter)
 	var i Operation
 	err := row.Scan(
 		&i.ID,
@@ -120,6 +119,7 @@ func (q *Queries) ClaimRetryableOperation(ctx context.Context, arg ClaimRetryabl
 		&i.Retryable,
 		&i.RetryCount,
 		&i.MaxRetries,
+		&i.RunAfter,
 		&i.ErrorCode,
 		&i.ErrorMessage,
 		&i.TraceID,
@@ -198,7 +198,7 @@ func (q *Queries) CreateOperationStep(ctx context.Context, arg CreateOperationSt
 const finishOperationStep = `-- name: FinishOperationStep :execrows
 UPDATE operation_steps
 SET status = $2, error_code = $3, error_message = $4, finished_at = $5, updated_at = $5
-WHERE operation_id = $1 AND step_key = $2 AND status = 'running'
+WHERE operation_id = $1 AND step_key = $6 AND status = 'running'
 `
 
 type FinishOperationStepParams struct {
@@ -207,6 +207,7 @@ type FinishOperationStepParams struct {
 	ErrorCode    pgtype.Text        `json:"error_code"`
 	ErrorMessage pgtype.Text        `json:"error_message"`
 	FinishedAt   pgtype.Timestamptz `json:"finished_at"`
+	StepKey      string             `json:"step_key"`
 }
 
 func (q *Queries) FinishOperationStep(ctx context.Context, arg FinishOperationStepParams) (int64, error) {
@@ -216,6 +217,7 @@ func (q *Queries) FinishOperationStep(ctx context.Context, arg FinishOperationSt
 		arg.ErrorCode,
 		arg.ErrorMessage,
 		arg.FinishedAt,
+		arg.StepKey,
 	)
 	if err != nil {
 		return 0, err
@@ -225,13 +227,14 @@ func (q *Queries) FinishOperationStep(ctx context.Context, arg FinishOperationSt
 
 const moveOperationToRetrying = `-- name: MoveOperationToRetrying :execrows
 UPDATE operations
-SET status = 'retrying', retry_count = retry_count + 1, error_code = $2,
-    error_message = $3, updated_at = $4
-WHERE id = $1 AND status = $5
+SET status = 'retrying', retry_count = retry_count + 1, run_after = $2, error_code = $3,
+    error_message = $4, updated_at = $5
+WHERE id = $1 AND status = $6
 `
 
 type MoveOperationToRetryingParams struct {
 	ID           uuid.UUID          `json:"id"`
+	RunAfter     pgtype.Timestamptz `json:"run_after"`
 	ErrorCode    pgtype.Text        `json:"error_code"`
 	ErrorMessage pgtype.Text        `json:"error_message"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
@@ -242,6 +245,7 @@ type MoveOperationToRetryingParams struct {
 func (q *Queries) MoveOperationToRetrying(ctx context.Context, arg MoveOperationToRetryingParams) (int64, error) {
 	result, err := q.db.Exec(ctx, moveOperationToRetrying,
 		arg.ID,
+		arg.RunAfter,
 		arg.ErrorCode,
 		arg.ErrorMessage,
 		arg.UpdatedAt,
@@ -255,10 +259,7 @@ func (q *Queries) MoveOperationToRetrying(ctx context.Context, arg MoveOperation
 
 const operationByID = `-- name: OperationByID :one
 
-SELECT id, type, resource_type, resource_id, status, phase, progress,
-       message_key, provider_id, provider_operation_id, idempotency_key,
-       retryable, retry_count, max_retries, error_code, error_message,
-       trace_id, started_at, finished_at, created_at, updated_at
+SELECT id, type, resource_type, resource_id, status, phase, progress, message_key, provider_id, provider_operation_id, idempotency_key, retryable, retry_count, max_retries, run_after, error_code, error_message, trace_id, started_at, finished_at, created_at, updated_at
 FROM operations
 WHERE id = $1
 `
@@ -282,6 +283,7 @@ func (q *Queries) OperationByID(ctx context.Context, id uuid.UUID) (Operation, e
 		&i.Retryable,
 		&i.RetryCount,
 		&i.MaxRetries,
+		&i.RunAfter,
 		&i.ErrorCode,
 		&i.ErrorMessage,
 		&i.TraceID,
@@ -294,10 +296,7 @@ func (q *Queries) OperationByID(ctx context.Context, id uuid.UUID) (Operation, e
 }
 
 const operationByIdempotencyKey = `-- name: OperationByIdempotencyKey :one
-SELECT id, type, resource_type, resource_id, status, phase, progress,
-       message_key, provider_id, provider_operation_id, idempotency_key,
-       retryable, retry_count, max_retries, error_code, error_message,
-       trace_id, started_at, finished_at, created_at, updated_at
+SELECT id, type, resource_type, resource_id, status, phase, progress, message_key, provider_id, provider_operation_id, idempotency_key, retryable, retry_count, max_retries, run_after, error_code, error_message, trace_id, started_at, finished_at, created_at, updated_at
 FROM operations
 WHERE idempotency_key = $1
 `
@@ -320,6 +319,7 @@ func (q *Queries) OperationByIdempotencyKey(ctx context.Context, idempotencyKey 
 		&i.Retryable,
 		&i.RetryCount,
 		&i.MaxRetries,
+		&i.RunAfter,
 		&i.ErrorCode,
 		&i.ErrorMessage,
 		&i.TraceID,
@@ -333,26 +333,50 @@ func (q *Queries) OperationByIdempotencyKey(ctx context.Context, idempotencyKey 
 
 const setOperationPhase = `-- name: SetOperationPhase :execrows
 UPDATE operations
-SET phase = $2, progress = $3, message_key = $4, updated_at = $5
+SET phase = $2, message_key = $3, updated_at = $4
 WHERE id = $1
 `
 
 type SetOperationPhaseParams struct {
 	ID         uuid.UUID          `json:"id"`
 	Phase      pgtype.Text        `json:"phase"`
-	Progress   int32              `json:"progress"`
 	MessageKey pgtype.Text        `json:"message_key"`
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
+// The phase carries a name and a message, never a number: progress is derived
+// from the steps and the only writer of the progress column is
+// SyncOperationProgress, so a workflow cannot report itself further along than
+// its finished steps say (docs/07: 进度按步骤映射，不按时间伪造).
 func (q *Queries) SetOperationPhase(ctx context.Context, arg SetOperationPhaseParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setOperationPhase,
 		arg.ID,
 		arg.Phase,
-		arg.Progress,
 		arg.MessageKey,
 		arg.UpdatedAt,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setOperationProvider = `-- name: SetOperationProvider :execrows
+UPDATE operations
+SET provider_operation_id = $2, updated_at = $3
+WHERE id = $1
+`
+
+type SetOperationProviderParams struct {
+	ID                  uuid.UUID          `json:"id"`
+	ProviderOperationID pgtype.Text        `json:"provider_operation_id"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+}
+
+// The provider's own identifier for this work, recorded the moment the provider
+// accepted the request, so a poll later does not need the request at all.
+func (q *Queries) SetOperationProvider(ctx context.Context, arg SetOperationProviderParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setOperationProvider, arg.ID, arg.ProviderOperationID, arg.UpdatedAt)
 	if err != nil {
 		return 0, err
 	}
@@ -363,17 +387,18 @@ const startOperationStep = `-- name: StartOperationStep :execrows
 
 UPDATE operation_steps
 SET status = 'running', attempt = attempt + 1, started_at = $2, updated_at = $2
-WHERE operation_id = $1 AND step_key = $2 AND status IN ('pending', 'failed')
+WHERE operation_id = $1 AND step_key = $3 AND status IN ('pending', 'failed')
 `
 
 type StartOperationStepParams struct {
 	OperationID uuid.UUID          `json:"operation_id"`
 	StartedAt   pgtype.Timestamptz `json:"started_at"`
+	StepKey     string             `json:"step_key"`
 }
 
 // ------------------------------------------------------------------ steps --
 func (q *Queries) StartOperationStep(ctx context.Context, arg StartOperationStepParams) (int64, error) {
-	result, err := q.db.Exec(ctx, startOperationStep, arg.OperationID, arg.StartedAt)
+	result, err := q.db.Exec(ctx, startOperationStep, arg.OperationID, arg.StartedAt, arg.StepKey)
 	if err != nil {
 		return 0, err
 	}
@@ -452,8 +477,8 @@ const transitionOperation = `-- name: TransitionOperation :execrows
 UPDATE operations
 SET status = $2, phase = $3, message_key = $4, error_code = $5,
     error_message = $6, updated_at = $7,
-    finished_at = CASE WHEN $2 IN ('succeeded', 'failed', 'cancelled')
-                       THEN $7 ELSE finished_at END
+    finished_at = CASE WHEN $2::varchar IN ('succeeded', 'failed', 'cancelled')
+                       THEN $7::timestamptz ELSE finished_at END
 WHERE id = $1 AND status = $8
 `
 

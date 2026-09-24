@@ -169,3 +169,30 @@ SET available_balance_minor = wallets.available_balance_minor + $4,
 -- name: CreateOutboxEvent :exec
 INSERT INTO outbox_events (id, event_type, aggregate_type, aggregate_id, payload)
 VALUES ($1, $2, $3, $4, $5);
+
+-- The delivery side, owned by the worker (ADR-005): claim what is due under
+-- SKIP LOCKED, so N workers share the batch rather than racing over it.
+-- name: ClaimDueOutboxEvents :many
+UPDATE outbox_events
+SET status = 'pending', attempts = attempts + 1, next_attempt_at = $1
+WHERE id IN (
+  SELECT o.id FROM outbox_events o
+  WHERE o.status = 'pending' AND o.next_attempt_at <= $1
+    AND o.event_type = ANY($2::text[])
+  ORDER BY o.created_at
+  FOR UPDATE SKIP LOCKED
+  LIMIT 32
+)
+RETURNING id, event_type, aggregate_type, aggregate_id, payload, attempts, created_at;
+
+-- A delivered event leaves the queue for good; consumer dedup is by event_id.
+-- name: MarkOutboxPublished :execrows
+UPDATE outbox_events
+SET status = 'published', published_at = $2
+WHERE id = $1;
+
+-- A failed delivery retries on the same backoff the operations use.
+-- name: MarkOutboxFailed :execrows
+UPDATE outbox_events
+SET status = 'pending', next_attempt_at = $2
+WHERE id = $1 AND status = 'pending';

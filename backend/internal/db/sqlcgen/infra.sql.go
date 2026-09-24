@@ -50,6 +50,95 @@ func (q *Queries) CommitNodeResources(ctx context.Context, arg CommitNodeResourc
 	return result.RowsAffected(), nil
 }
 
+const createResourceReservation = `-- name: CreateResourceReservation :exec
+
+INSERT INTO resource_reservations (id, node_id, operation_id, cpu_cores, memory_mb,
+                                   disk_gb, ipv4_count, ipv6_count, nat_port_count,
+                                   status, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'reserved', $10)
+`
+
+type CreateResourceReservationParams struct {
+	ID           uuid.UUID          `json:"id"`
+	NodeID       uuid.UUID          `json:"node_id"`
+	OperationID  uuid.UUID          `json:"operation_id"`
+	CpuCores     pgtype.Numeric     `json:"cpu_cores"`
+	MemoryMb     int64              `json:"memory_mb"`
+	DiskGb       int64              `json:"disk_gb"`
+	Ipv4Count    int32              `json:"ipv4_count"`
+	Ipv6Count    int32              `json:"ipv6_count"`
+	NatPortCount int32              `json:"nat_port_count"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
+}
+
+// ------------------------------------------------- reservations (rows) --
+// The durable promise. The unique partial index
+// ux_resource_reservations_open (one reserved row per operation) makes a
+// retried reserve idempotent: the second insert fails and the caller keeps
+// the promise it already holds.
+func (q *Queries) CreateResourceReservation(ctx context.Context, arg CreateResourceReservationParams) error {
+	_, err := q.db.Exec(ctx, createResourceReservation,
+		arg.ID,
+		arg.NodeID,
+		arg.OperationID,
+		arg.CpuCores,
+		arg.MemoryMb,
+		arg.DiskGb,
+		arg.Ipv4Count,
+		arg.Ipv6Count,
+		arg.NatPortCount,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
+const expiredReservations = `-- name: ExpiredReservations :many
+UPDATE resource_reservations
+SET status = 'expired', updated_at = $1
+WHERE id IN (
+  SELECT r.id FROM resource_reservations r
+  WHERE r.status = 'reserved' AND r.expires_at <= $1
+  ORDER BY r.expires_at
+  FOR UPDATE SKIP LOCKED
+  LIMIT 64
+)
+RETURNING node_id, cpu_cores, memory_mb, disk_gb
+`
+
+type ExpiredReservationsRow struct {
+	NodeID   uuid.UUID      `json:"node_id"`
+	CpuCores pgtype.Numeric `json:"cpu_cores"`
+	MemoryMb int64          `json:"memory_mb"`
+	DiskGb   int64          `json:"disk_gb"`
+}
+
+// The expiry sweep reads what it must give back, one row at a time under
+// SKIP LOCKED, so N sweeper instances share the work rather than racing it.
+func (q *Queries) ExpiredReservations(ctx context.Context, updatedAt pgtype.Timestamptz) ([]ExpiredReservationsRow, error) {
+	rows, err := q.db.Query(ctx, expiredReservations, updatedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExpiredReservationsRow{}
+	for rows.Next() {
+		var i ExpiredReservationsRow
+		if err := rows.Scan(
+			&i.NodeID,
+			&i.CpuCores,
+			&i.MemoryMb,
+			&i.DiskGb,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNodeGroups = `-- name: ListNodeGroups :many
 SELECT id, name, region, status, created_at, updated_at
 FROM node_groups
@@ -207,6 +296,50 @@ func (q *Queries) ListProviders(ctx context.Context) ([]Provider, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const markReservationCommitted = `-- name: MarkReservationCommitted :execrows
+UPDATE resource_reservations
+SET status = 'committed', updated_at = $2
+WHERE operation_id = $1 AND node_id = $3 AND status = 'reserved'
+`
+
+type MarkReservationCommittedParams struct {
+	OperationID uuid.UUID          `json:"operation_id"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	NodeID      uuid.UUID          `json:"node_id"`
+}
+
+// Commit turns the promise into allocation: the row leaves `reserved` first,
+// so a concurrent second commit cannot pass the guard, and only the winner
+// moves the counters.
+func (q *Queries) MarkReservationCommitted(ctx context.Context, arg MarkReservationCommittedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markReservationCommitted, arg.OperationID, arg.UpdatedAt, arg.NodeID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markReservationReleased = `-- name: MarkReservationReleased :execrows
+UPDATE resource_reservations
+SET status = 'released', updated_at = $2
+WHERE operation_id = $1 AND node_id = $3 AND status = 'reserved'
+`
+
+type MarkReservationReleasedParams struct {
+	OperationID uuid.UUID          `json:"operation_id"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	NodeID      uuid.UUID          `json:"node_id"`
+}
+
+// Release withdraws the promise; only its holder can.
+func (q *Queries) MarkReservationReleased(ctx context.Context, arg MarkReservationReleasedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markReservationReleased, arg.OperationID, arg.UpdatedAt, arg.NodeID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const nodeByID = `-- name: NodeByID :one

@@ -70,6 +70,48 @@ export function healthStatusTone(status: HealthReport["status"]): Tone {
   return status === "up" ? "success" : "danger";
 }
 
+/** The operation states the backend machine can be in (docs/05). */
+export type OperationStatus =
+  | "queued"
+  | "running"
+  | "waiting_provider"
+  | "waiting_resource"
+  | "verifying"
+  | "retrying"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+/**
+ * Tone for one operation state.
+ *
+ * Waiting states are warnings — neither wrong nor done — and a cancellation is
+ * neutral, because the user chose it; reserving danger for genuine failure is
+ * what keeps the colour legible.
+ */
+export function operationStatusTone(status: OperationStatus): Tone {
+  switch (status) {
+    case "succeeded":
+      return "success";
+    case "failed":
+      return "danger";
+    case "waiting_provider":
+    case "waiting_resource":
+    case "retrying":
+      return "warning";
+    case "running":
+    case "verifying":
+      return "info";
+    default:
+      return "neutral";
+  }
+}
+
+/** i18n key for an operation status. */
+export function operationStatusLabelKey(status: OperationStatus): string {
+  return `operation.status.${status}`;
+}
+
 /** i18n key for a health status. */
 export function healthStatusLabelKey(status: HealthReport["status"]): string {
   return `health.status.${status}`;

@@ -160,6 +160,9 @@ func TestAdminSurfaceHasExactlyTheDeclaredEndpoints(t *testing.T) {
 		"GET /api/v1/admin/providers":   "providers.read",
 		"GET /api/v1/admin/node-groups": "nodes.read",
 		"GET /api/v1/admin/nodes":       "nodes.read",
+		// The operation system's readers (0007, ADR-008).
+		"GET /api/v1/admin/operations/{operationID}": "operations.read",
+		"GET /api/v1/admin/operations/events":        "operations.read",
 	}
 
 	for route, requirement := range want {

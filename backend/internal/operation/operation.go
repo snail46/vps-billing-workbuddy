@@ -161,6 +161,7 @@ type Operation struct {
 	TraceID             string
 	StartedAt           *time.Time
 	FinishedAt          *time.Time
+	CreatedAt           time.Time
 }
 
 // Step is one named stage of the workflow behind an operation.
@@ -174,6 +175,8 @@ type Step struct {
 	Attempt      int
 	ErrorCode    *string
 	ErrorMessage *string
+	StartedAt    *time.Time
+	FinishedAt   *time.Time
 }
 
 // ProgressOf computes an operation's progress from its steps — the completed

@@ -30,6 +30,65 @@ func (q *Queries) AppendPaymentPayload(ctx context.Context, arg AppendPaymentPay
 	return err
 }
 
+const claimDueOutboxEvents = `-- name: ClaimDueOutboxEvents :many
+UPDATE outbox_events
+SET status = 'pending', attempts = attempts + 1, next_attempt_at = $1
+WHERE id IN (
+  SELECT o.id FROM outbox_events o
+  WHERE o.status = 'pending' AND o.next_attempt_at <= $1
+    AND o.event_type = ANY($2::text[])
+  ORDER BY o.created_at
+  FOR UPDATE SKIP LOCKED
+  LIMIT 32
+)
+RETURNING id, event_type, aggregate_type, aggregate_id, payload, attempts, created_at
+`
+
+type ClaimDueOutboxEventsParams struct {
+	NextAttemptAt pgtype.Timestamptz `json:"next_attempt_at"`
+	Column2       []string           `json:"column_2"`
+}
+
+type ClaimDueOutboxEventsRow struct {
+	ID            uuid.UUID          `json:"id"`
+	EventType     string             `json:"event_type"`
+	AggregateType string             `json:"aggregate_type"`
+	AggregateID   uuid.UUID          `json:"aggregate_id"`
+	Payload       []byte             `json:"payload"`
+	Attempts      int32              `json:"attempts"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+// The delivery side, owned by the worker (ADR-005): claim what is due under
+// SKIP LOCKED, so N workers share the batch rather than racing over it.
+func (q *Queries) ClaimDueOutboxEvents(ctx context.Context, arg ClaimDueOutboxEventsParams) ([]ClaimDueOutboxEventsRow, error) {
+	rows, err := q.db.Query(ctx, claimDueOutboxEvents, arg.NextAttemptAt, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ClaimDueOutboxEventsRow{}
+	for rows.Next() {
+		var i ClaimDueOutboxEventsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventType,
+			&i.AggregateType,
+			&i.AggregateID,
+			&i.Payload,
+			&i.Attempts,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createInvoice = `-- name: CreateInvoice :exec
 
 INSERT INTO invoices (
@@ -488,6 +547,46 @@ type MarkInvoicePaidParams struct {
 
 func (q *Queries) MarkInvoicePaid(ctx context.Context, arg MarkInvoicePaidParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markInvoicePaid, arg.OrderID, arg.PaidAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markOutboxFailed = `-- name: MarkOutboxFailed :execrows
+UPDATE outbox_events
+SET status = 'pending', next_attempt_at = $2
+WHERE id = $1 AND status = 'pending'
+`
+
+type MarkOutboxFailedParams struct {
+	ID            uuid.UUID          `json:"id"`
+	NextAttemptAt pgtype.Timestamptz `json:"next_attempt_at"`
+}
+
+// A failed delivery retries on the same backoff the operations use.
+func (q *Queries) MarkOutboxFailed(ctx context.Context, arg MarkOutboxFailedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markOutboxFailed, arg.ID, arg.NextAttemptAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markOutboxPublished = `-- name: MarkOutboxPublished :execrows
+UPDATE outbox_events
+SET status = 'published', published_at = $2
+WHERE id = $1
+`
+
+type MarkOutboxPublishedParams struct {
+	ID          uuid.UUID          `json:"id"`
+	PublishedAt pgtype.Timestamptz `json:"published_at"`
+}
+
+// A delivered event leaves the queue for good; consumer dedup is by event_id.
+func (q *Queries) MarkOutboxPublished(ctx context.Context, arg MarkOutboxPublishedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markOutboxPublished, arg.ID, arg.PublishedAt)
 	if err != nil {
 		return 0, err
 	}

@@ -23,8 +23,13 @@ import (
 
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/config"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/db"
+	sqlcgen "github.com/snail46/vps-billing-workbuddy/backend/internal/db/sqlcgen"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/logging"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/operation"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/outbox"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/redisx"
+	infrastore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/infra"
+	operationstore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/operation"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/version"
 )
 
@@ -92,6 +97,15 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 	}
 	defer func() { _ = redisClient.Close() }()
 
+	// The operation system (ADR-008): the database is the queue, and this
+	// process is one of the workers that drains it. Runners register as the
+	// phases that own workflows arrive; an empty registry simply claims
+	// nothing, and the sweep keeps dead promises from holding capacity.
+	opStore := operationstore.New(pool)
+	infraStore := infrastore.New(pool)
+	engine := operation.NewEngine(opStore, infraStore, logger, operation.DefaultMaxRetries)
+	publisher := outbox.New(sqlcgen.New(pool), logger)
+
 	logger.InfoContext(ctx, "worker ready")
 
 	ticker := time.NewTicker(cfg.WorkerTickInterval)
@@ -119,6 +133,31 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 					slog.String("error", err.Error()))
 			}
 			cancel()
+
+			workCtx, workCancel := context.WithTimeout(ctx, dependencyCheckTimeout)
+			claimed, err := engine.Tick(workCtx)
+			if err != nil {
+				logger.ErrorContext(workCtx, "the operation tick failed",
+					slog.String("error", err.Error()))
+			} else if claimed {
+				logger.InfoContext(workCtx, "an operation was claimed and executed")
+			}
+			delivered, err := publisher.Deliver(workCtx)
+			if err != nil {
+				logger.ErrorContext(workCtx, "the outbox tick failed",
+					slog.String("error", err.Error()))
+			} else if delivered > 0 {
+				logger.InfoContext(workCtx, "outbox events delivered",
+					slog.Int("count", delivered))
+			}
+			if released, err := infraStore.SweepExpiredReservations(workCtx, time.Now().UTC()); err != nil {
+				logger.ErrorContext(workCtx, "the reservation sweep failed",
+					slog.String("error", err.Error()))
+			} else if released > 0 {
+				logger.InfoContext(workCtx, "expired reservations released",
+					slog.Int("count", released))
+			}
+			workCancel()
 		}
 	}
 }

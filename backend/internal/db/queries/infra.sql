@@ -96,3 +96,43 @@ WHERE id = $1
   AND cpu_reserved >= $2::numeric
   AND memory_reserved_mb >= $3
   AND disk_reserved_gb >= $4;
+
+-- ------------------------------------------------- reservations (rows) --
+
+-- The durable promise. The unique partial index
+-- ux_resource_reservations_open (one reserved row per operation) makes a
+-- retried reserve idempotent: the second insert fails and the caller keeps
+-- the promise it already holds.
+-- name: CreateResourceReservation :exec
+INSERT INTO resource_reservations (id, node_id, operation_id, cpu_cores, memory_mb,
+                                   disk_gb, ipv4_count, ipv6_count, nat_port_count,
+                                   status, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'reserved', $10);
+
+-- Commit turns the promise into allocation: the row leaves `reserved` first,
+-- so a concurrent second commit cannot pass the guard, and only the winner
+-- moves the counters.
+-- name: MarkReservationCommitted :execrows
+UPDATE resource_reservations
+SET status = 'committed', updated_at = $2
+WHERE operation_id = $1 AND node_id = $3 AND status = 'reserved';
+
+-- Release withdraws the promise; only its holder can.
+-- name: MarkReservationReleased :execrows
+UPDATE resource_reservations
+SET status = 'released', updated_at = $2
+WHERE operation_id = $1 AND node_id = $3 AND status = 'reserved';
+
+-- The expiry sweep reads what it must give back, one row at a time under
+-- SKIP LOCKED, so N sweeper instances share the work rather than racing it.
+-- name: ExpiredReservations :many
+UPDATE resource_reservations
+SET status = 'expired', updated_at = $1
+WHERE id IN (
+  SELECT r.id FROM resource_reservations r
+  WHERE r.status = 'reserved' AND r.expires_at <= $1
+  ORDER BY r.expires_at
+  FOR UPDATE SKIP LOCKED
+  LIMIT 64
+)
+RETURNING node_id, cpu_cores, memory_mb, disk_gb;

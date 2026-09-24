@@ -84,6 +84,27 @@ export const enUS: TranslationShape<typeof zhCN> = {
     nothing_due: "The current period has not ended yet, so there is nothing to renew.",
     insufficient_balance: "The balance does not cover this renewal. Please top up first.",
   },
+  operation: {
+    status: {
+      queued: "Queued",
+      running: "Running",
+      waiting_provider: "Waiting for the provider",
+      waiting_resource: "Waiting for capacity",
+      verifying: "Verifying",
+      retrying: "Waiting to retry",
+      succeeded: "Completed",
+      failed: "Failed",
+      cancelled: "Cancelled",
+    },
+    step: {
+      pending: "Pending",
+      running: "Running",
+      succeeded: "Done",
+      failed: "Failed",
+      skipped: "Skipped",
+      attempt: "attempt {{count}}",
+    },
+  },
   health: {
     title: "Platform status",
     subtitle: "Live availability of the foundational dependencies.",

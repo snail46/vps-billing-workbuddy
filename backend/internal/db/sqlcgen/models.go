@@ -138,6 +138,7 @@ type Operation struct {
 	Retryable           bool               `json:"retryable"`
 	RetryCount          int32              `json:"retry_count"`
 	MaxRetries          int32              `json:"max_retries"`
+	RunAfter            pgtype.Timestamptz `json:"run_after"`
 	ErrorCode           pgtype.Text        `json:"error_code"`
 	ErrorMessage        pgtype.Text        `json:"error_message"`
 	TraceID             string             `json:"trace_id"`

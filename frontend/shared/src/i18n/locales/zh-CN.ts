@@ -81,6 +81,27 @@ export const zhCN = {
     nothing_due: "当前周期尚未到期，暂时无需续费。",
     insufficient_balance: "余额不足以支付本次续费，请先充值。",
   },
+  operation: {
+    status: {
+      queued: "排队中",
+      running: "执行中",
+      waiting_provider: "等待服务商",
+      waiting_resource: "等待资源",
+      verifying: "验证中",
+      retrying: "等待重试",
+      succeeded: "已完成",
+      failed: "已失败",
+      cancelled: "已取消",
+    },
+    step: {
+      pending: "待执行",
+      running: "执行中",
+      succeeded: "已完成",
+      failed: "已失败",
+      skipped: "已跳过",
+      attempt: "第 {{count}} 次尝试",
+    },
+  },
   health: {
     title: "平台状态",
     subtitle: "基础环境依赖的实时可用性。",

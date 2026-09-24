@@ -62,8 +62,11 @@ export {
 export {
   healthStatusLabelKey,
   healthStatusTone,
+  operationStatusLabelKey,
+  operationStatusTone,
   TONES,
   TONE_STYLES,
+  type OperationStatus,
   type Tone,
   type ToneStyle,
 } from "./ui/tone.js";
@@ -73,6 +76,12 @@ export { Button, type ButtonProps, type ButtonVariant } from "./ui/Button.js";
 export { Card, type CardProps } from "./ui/Card.js";
 export { LocaleSwitcher } from "./ui/LocaleSwitcher.js";
 export { StatusBadge, type StatusBadgeProps } from "./ui/StatusBadge.js";
+export {
+  OperationProgress,
+  type OperationProgressProps,
+  type OperationStepView,
+  type OperationView,
+} from "./ui/OperationProgress.js";
 export {
   EmptyState,
   ErrorState,
