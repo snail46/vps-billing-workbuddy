@@ -201,11 +201,14 @@ func TestAProvisionWithoutCapacityIsRetryable(t *testing.T) {
 	userID, cookie, token := signUp(t, e)
 	entry := seedCatalog(t, e)
 	seedProviderAndNode(t, e)
-	// The scheduler has nothing to pick: every node goes offline, which the
-	// scheduler filters out — the rows stay, because the receipts of earlier
-	// tests reference them and the capacity book cannot be bulk-erased.
-	if _, err := e.pool.Exec(ctx, "UPDATE nodes SET status = 'offline'"); err != nil {
-		t.Fatalf("take the nodes offline: %v", err)
+	// The scheduler has nothing that can hold this plan: the demand side is
+	// what the test owns, so the plan asks for more cores than any node can
+	// carry — a premise no concurrent package's seed can invalidate. Taking
+	// the world's nodes offline was the first draft, and it broke the moment
+	// another package seeded a node of its own.
+	if _, err := e.pool.Exec(ctx,
+		"UPDATE plans SET cpu_cores = '9999' WHERE id = $1", entry.planID); err != nil {
+		t.Fatalf("make the plan unprovisionable: %v", err)
 	}
 
 	order := placeOrderAndPayment(t, e, entry, cookie, token)
