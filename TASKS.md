@@ -110,7 +110,8 @@
 - [x] renewal
 - [x] due/grace/suspend/cancel
 
-> **状态：实现完成，本地全量验证通过；CI run #18 待复验。**
+> **状态：已关闭。** CI run #19（提交 `66592a4`）全绿，生命周期与并发恰一次续费
+> 在真实 PostgreSQL + Redis 上实证通过。
 >
 > `docs/05` 只给词表不给边，`ADR-006` 固化了转移表与续费机制：
 > 订阅在**订单结算的同事务内**诞生并激活（Payment+Order+Ledger+Outbox+Subscription）；
