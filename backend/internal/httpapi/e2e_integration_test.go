@@ -17,13 +17,22 @@ import (
 
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/authmw"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/commerce"
+	sqlcgen "github.com/snail46/vps-billing-workbuddy/backend/internal/db/sqlcgen"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/health"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/httpapi"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/identity"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/operation"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/outbox"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/payment/fakegateway"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/provider"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/provider/mockprovider"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/provision"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/redisx"
 	commercestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/commerce"
 	identitystore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/identity"
+	infrastore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/infra"
+	instancestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/instance"
+	operationstore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/operation"
 )
 
 // The end-to-end identity test: the assembled router, the real identity service, PostgreSQL
@@ -45,6 +54,11 @@ type e2eEnv struct {
 	// gateway is the same instance the router verifies callbacks with, so a test can
 	// build one that is indistinguishable from a real delivery.
 	gateway *fakegateway.Fake
+	// engine and publisher are the worker's halves, driven in-process.
+	engine    *operation.Engine
+	publisher *outbox.Publisher
+	instances *instancestore.Store
+	infra     *infrastore.Store
 }
 
 func newE2E(t *testing.T) *e2eEnv {
@@ -118,11 +132,40 @@ func newE2E(t *testing.T) *e2eEnv {
 		fake.Name(): fake,
 	}
 
+	// The provision machinery (ADR-009): the engine and the outbox publisher
+	// the test drives in-process, the way the worker does, so the Gate's
+	// journey runs against the real stores.
+	opStore := operationstore.New(pool)
+	infraStore := infrastore.New(pool)
+	instancesStore := instancestore.New(pool)
+	engine := operation.NewEngine(opStore, infraStore, testLogger(), operation.DefaultMaxRetries)
+	publisher := outbox.New(sqlcgen.New(pool), testLogger())
+	mockProvider := mockprovider.New("mock")
+	provisionRunner := provision.NewRunner(provision.Deps{
+		Subscriptions: commerceService,
+		Nodes:         infraStore,
+		Instances:     instancesStore,
+		Providers:     map[string]provider.Provider{mockProvider.Name(): mockProvider},
+		Outbox:        commercestore.New(pool),
+		Logger:        testLogger(),
+	})
+	if err := engine.Register(provision.OperationType, provisionRunner); err != nil {
+		t.Fatalf("register the provision runner: %v", err)
+	}
+	if err := publisher.Register(commerce.EventSubscriptionActivated,
+		provision.HandleSubscriptionActivated(provision.BridgeDeps{Engine: engine})); err != nil {
+		t.Fatalf("register the provision bridge: %v", err)
+	}
+
 	return &e2eEnv{
-		gateway:  fake,
-		pool:     pool,
-		hasher:   hasher,
-		password: "correct horse battery staple",
+		gateway:   fake,
+		pool:      pool,
+		engine:    engine,
+		publisher: publisher,
+		instances: instancesStore,
+		infra:     infraStore,
+		hasher:    hasher,
+		password:  "correct horse battery staple",
 		router: httpapi.NewRouter(httpapi.Deps{
 			Config: cfg,
 			Logger: testLogger(),
@@ -138,6 +181,7 @@ func newE2E(t *testing.T) *e2eEnv {
 				Service:  commerceService,
 				Gateways: gateways,
 			},
+			Instances: &httpapi.InstanceDeps{Store: instancesStore},
 		}),
 	}
 }

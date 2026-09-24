@@ -22,6 +22,7 @@ sql:
       - "migrations/0005_subscription.up.sql"
       - "migrations/0006_infrastructure.up.sql"
       - "migrations/0007_operations.up.sql"
+      - "migrations/0008_instances.up.sql"
     queries: "internal/db/queries"
     gen:
       go:

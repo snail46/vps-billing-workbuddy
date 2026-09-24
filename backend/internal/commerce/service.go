@@ -207,14 +207,27 @@ func NewService(deps Deps) (*Service, error) {
 	if deps.Store == nil {
 		return nil, errors.New("commerce: a store is required")
 	}
-	if len(deps.Gateways) == 0 {
-		return nil, errors.New("commerce: at least one payment gateway is required")
-	}
+	// Gateways may be empty: the reads the provision chain makes need none, and
+	// a payment start against an empty set is answered by the gateway lookup's
+	// own error rather than refused at construction — a deployment that adds
+	// payments later should not have to rebuild its read paths.
 	now := deps.Now
 	if now == nil {
 		now = time.Now
 	}
 	return &Service{store: deps.Store, gateway: deps.Gateways, now: now}, nil
+}
+
+// SystemSubscription reads a subscription without an owner scope: the
+// provision workflow runs as the platform, and its authority is the operation
+// it is executing, not a customer session.
+func (s *Service) SystemSubscription(ctx context.Context, id uuid.UUID) (Subscription, error) {
+	return s.store.SubscriptionByID(ctx, id)
+}
+
+// SystemPlan reads a plan without an owner scope, for the same reason.
+func (s *Service) SystemPlan(ctx context.Context, id uuid.UUID) (Plan, error) {
+	return s.store.PlanByID(ctx, id)
 }
 
 // ListActiveProducts returns the catalogue's products.

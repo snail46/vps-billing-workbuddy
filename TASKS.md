@@ -197,14 +197,27 @@
 ## Phase 6 — Provision Vertical Slice
 
 ## Phase 6 — Provision Vertical Slice
-- [ ] paid order → subscription
-- [ ] provision operation
-- [ ] scheduler/reservation
-- [ ] MockProvider create
-- [ ] instance running
-- [ ] notification
-- [ ] E2E
+- [x] paid order → subscription
+- [x] provision operation
+- [x] scheduler/reservation
+- [x] MockProvider create
+- [x] instance running
+- [x] notification
+- [x] E2E
 **Gate:** 浏览→下单→假支付→自动开通→自动进度→运行。
+
+> **状态：实现完成，本地全量验证通过；CI 待复验。**
+>
+> **ADR-009**：触发器是 `subscription.activated.v1`（非支付事件——续费不再触发
+> 开通，多行订单每行一实例）；桥接 = outbox handler，幂等键
+> `provision:subscription:<id>`——**同一回调 100 次（顺序+并发）仍恰好 1 个
+> provision workflow、1 台实例、1 条通知**（E2E 实证）。
+> runner 走 docs/07 全链（11 步），网络两步**跳过而非删除**（进度分母与文档一致，
+> Phase 7 真实 provider 无需改机器）；调度器确定性；回执 commit 收口；
+> 通知 = notifications 行 + `instance.provisioned.v1` 事件。
+> 用户面 `GET /instances`（本人范围）。
+> 0008：instances + notifications（含 docs/05 双实例机词表 CHECK、
+> `ux_instance_provider_id` 唯一索引）。Gate 断言：表 17、索引 7。
 
 ## Phase 7 — Direct Provider
 - [ ] CLICD 或 LXDAPI Adapter

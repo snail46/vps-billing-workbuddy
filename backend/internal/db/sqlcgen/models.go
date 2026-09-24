@@ -44,6 +44,30 @@ type AuditEvent struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
+type Instance struct {
+	ID                 uuid.UUID          `json:"id"`
+	SubscriptionID     uuid.UUID          `json:"subscription_id"`
+	NodeID             *uuid.UUID         `json:"node_id"`
+	ProviderID         *uuid.UUID         `json:"provider_id"`
+	ProviderInstanceID pgtype.Text        `json:"provider_instance_id"`
+	Name               string             `json:"name"`
+	DesiredState       string             `json:"desired_state"`
+	ObservedState      string             `json:"observed_state"`
+	CpuCores           pgtype.Numeric     `json:"cpu_cores"`
+	MemoryMb           int32              `json:"memory_mb"`
+	DiskGb             int32              `json:"disk_gb"`
+	TrafficLimitGb     pgtype.Int8        `json:"traffic_limit_gb"`
+	BandwidthMbps      pgtype.Int4        `json:"bandwidth_mbps"`
+	ImageID            pgtype.Text        `json:"image_id"`
+	PrimaryIpv4        *netip.Addr        `json:"primary_ipv4"`
+	PrimaryIpv6        *netip.Addr        `json:"primary_ipv6"`
+	LastSyncedAt       pgtype.Timestamptz `json:"last_synced_at"`
+	Version            int64              `json:"version"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
+}
+
 type Invoice struct {
 	ID             uuid.UUID          `json:"id"`
 	InvoiceNo      string             `json:"invoice_no"`
@@ -121,6 +145,19 @@ type NodeGroup struct {
 	Status    string             `json:"status"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Notification struct {
+	ID         uuid.UUID          `json:"id"`
+	UserID     *uuid.UUID         `json:"user_id"`
+	AdminID    *uuid.UUID         `json:"admin_id"`
+	Type       string             `json:"type"`
+	TitleKey   string             `json:"title_key"`
+	MessageKey string             `json:"message_key"`
+	Parameters []byte             `json:"parameters"`
+	Severity   string             `json:"severity"`
+	ReadAt     pgtype.Timestamptz `json:"read_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
 type Operation struct {

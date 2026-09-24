@@ -57,6 +57,8 @@ type Deps struct {
 	Infra *InfraDeps
 	// Operations is the operation system's store.
 	Operations *operationstore.Store
+	// Instances is the customer's instance surface's store.
+	Instances *InstanceDeps
 }
 
 // Handler is the assembled HTTP surface.
@@ -129,7 +131,7 @@ func NewRouter(deps Deps) *Handler {
 	}))
 	r.Use(bmw.CORS(deps.Config.AllowedOrigins()))
 
-	api := &api{logger: logger, auth: deps.Auth, commerce: deps.Commerce, infra: deps.Infra, operations: &OperationsDeps{Store: deps.Operations}}
+	api := &api{logger: logger, auth: deps.Auth, commerce: deps.Commerce, infra: deps.Infra, operations: &OperationsDeps{Store: deps.Operations}, instances: deps.Instances}
 
 	// Router-level handlers cover paths that match no route at all, so the
 	// envelope holds even for a malformed URL.
@@ -204,6 +206,8 @@ func mountCommerce(v1 chi.Router, api *api) {
 		sessions.RequireUser, sessions.RequireCSRF)
 	mount(v1, http.MethodGet, "/orders", api.listOrders,
 		sessions.RequireUser)
+	mount(v1, http.MethodGet, "/instances", api.listMyInstances,
+		sessions.RequireUser)
 	mount(v1, http.MethodGet, "/orders/{orderID}", api.getOrder,
 		sessions.RequireUser)
 	mount(v1, http.MethodPost, "/orders/{orderID}/payments", api.startPayment,
@@ -239,6 +243,7 @@ type api struct {
 	commerce   *CommerceDeps
 	infra      *InfraDeps
 	operations *OperationsDeps
+	instances  *InstanceDeps
 }
 
 func (a *api) notFound(w http.ResponseWriter, r *http.Request) {

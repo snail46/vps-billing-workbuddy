@@ -21,14 +21,20 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/commerce"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/config"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/db"
 	sqlcgen "github.com/snail46/vps-billing-workbuddy/backend/internal/db/sqlcgen"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/logging"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/operation"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/outbox"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/provider"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/provider/mockprovider"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/provision"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/redisx"
+	commercestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/commerce"
 	infrastore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/infra"
+	instancestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/instance"
 	operationstore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/operation"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/version"
 )
@@ -98,13 +104,38 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 	defer func() { _ = redisClient.Close() }()
 
 	// The operation system (ADR-008): the database is the queue, and this
-	// process is one of the workers that drains it. Runners register as the
-	// phases that own workflows arrive; an empty registry simply claims
-	// nothing, and the sweep keeps dead promises from holding capacity.
+	// process is one of the workers that drains it.
 	opStore := operationstore.New(pool)
 	infraStore := infrastore.New(pool)
 	engine := operation.NewEngine(opStore, infraStore, logger, operation.DefaultMaxRetries)
 	publisher := outbox.New(sqlcgen.New(pool), logger)
+
+	// The provision workflow (ADR-009): the subscription's activation event
+	// starts its operation, and the runner walks docs/07's chain against the
+	// mock provider until the direct one arrives in Phase 7.
+	commerceStore := commercestore.New(pool)
+	gateway := mockprovider.New("mock")
+	commerceSvc, err := commerce.NewService(commerce.Deps{
+		Store: commerceStore,
+	})
+	if err != nil {
+		return fmt.Errorf("build the commerce service: %w", err)
+	}
+	provisionRunner := provision.NewRunner(provision.Deps{
+		Subscriptions: commerceSvc,
+		Nodes:         infraStore,
+		Instances:     instancestore.New(pool),
+		Providers:     map[string]provider.Provider{gateway.Name(): gateway},
+		Outbox:        commerceStore,
+		Logger:        logger,
+	})
+	if err := engine.Register(provision.OperationType, provisionRunner); err != nil {
+		return fmt.Errorf("register the provision runner: %w", err)
+	}
+	if err := publisher.Register(commerce.EventSubscriptionActivated,
+		provision.HandleSubscriptionActivated(provision.BridgeDeps{Engine: engine})); err != nil {
+		return fmt.Errorf("register the provision bridge: %w", err)
+	}
 
 	logger.InfoContext(ctx, "worker ready")
 
