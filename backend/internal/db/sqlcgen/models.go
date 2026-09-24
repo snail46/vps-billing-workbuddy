@@ -123,6 +123,46 @@ type NodeGroup struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type Operation struct {
+	ID                  uuid.UUID          `json:"id"`
+	Type                string             `json:"type"`
+	ResourceType        string             `json:"resource_type"`
+	ResourceID          uuid.UUID          `json:"resource_id"`
+	Status              string             `json:"status"`
+	Phase               pgtype.Text        `json:"phase"`
+	Progress            int32              `json:"progress"`
+	MessageKey          pgtype.Text        `json:"message_key"`
+	ProviderID          *uuid.UUID         `json:"provider_id"`
+	ProviderOperationID pgtype.Text        `json:"provider_operation_id"`
+	IdempotencyKey      string             `json:"idempotency_key"`
+	Retryable           bool               `json:"retryable"`
+	RetryCount          int32              `json:"retry_count"`
+	MaxRetries          int32              `json:"max_retries"`
+	ErrorCode           pgtype.Text        `json:"error_code"`
+	ErrorMessage        pgtype.Text        `json:"error_message"`
+	TraceID             string             `json:"trace_id"`
+	StartedAt           pgtype.Timestamptz `json:"started_at"`
+	FinishedAt          pgtype.Timestamptz `json:"finished_at"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+}
+
+type OperationStep struct {
+	ID           uuid.UUID          `json:"id"`
+	OperationID  uuid.UUID          `json:"operation_id"`
+	StepKey      string             `json:"step_key"`
+	StepOrder    int32              `json:"step_order"`
+	Status       string             `json:"status"`
+	Progress     int32              `json:"progress"`
+	Attempt      int32              `json:"attempt"`
+	ErrorCode    pgtype.Text        `json:"error_code"`
+	ErrorMessage pgtype.Text        `json:"error_message"`
+	StartedAt    pgtype.Timestamptz `json:"started_at"`
+	FinishedAt   pgtype.Timestamptz `json:"finished_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Order struct {
 	ID            uuid.UUID          `json:"id"`
 	OrderNo       string             `json:"order_no"`
@@ -232,6 +272,22 @@ type Provider struct {
 	LastHealthCheckAt pgtype.Timestamptz `json:"last_health_check_at"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ResourceReservation struct {
+	ID           uuid.UUID          `json:"id"`
+	NodeID       uuid.UUID          `json:"node_id"`
+	OperationID  uuid.UUID          `json:"operation_id"`
+	CpuCores     pgtype.Numeric     `json:"cpu_cores"`
+	MemoryMb     int64              `json:"memory_mb"`
+	DiskGb       int64              `json:"disk_gb"`
+	Ipv4Count    int32              `json:"ipv4_count"`
+	Ipv6Count    int32              `json:"ipv6_count"`
+	NatPortCount int32              `json:"nat_port_count"`
+	Status       string             `json:"status"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Role struct {
