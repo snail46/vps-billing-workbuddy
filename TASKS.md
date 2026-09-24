@@ -167,7 +167,8 @@
 - [x] SSE
 - [x] OperationProgress component
 
-> **状态：实现完成，本地全量验证通过；CI 待复验。**
+> **状态：已关闭。** CI run #25（提交 `e3cbcc9`）五 job 全绿：0007 在真实
+> PostgreSQL 上前滚+回滚，引擎生命周期集成测试与预留回执测试实证通过。
 >
 > **ADR-008**：数据库即队列（`FOR UPDATE SKIP LOCKED` 认领，N worker 互不等待）；
 > **引擎独占状态机**——执行上下文不提供状态转移方法，Run 返回 nil 即引擎收口
