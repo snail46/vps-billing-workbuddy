@@ -437,7 +437,7 @@ jobs:
           commerce_query="SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('node_groups','products','plans','orders','order_items','payments','wallets','ledger_transactions','ledger_entries','outbox_events','subscriptions','invoices','invoice_items','providers','nodes','instances','notifications');"
           commerce="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c "$commerce_query" | tr -d '\r')"
           echo "commerce tables=${commerce}"
-          if [ "${commerce}" != "15" ]; then
+          if [ "${commerce}" != "17" ]; then
             echo "::error::expected 17 tables through the vertical slice; got ${commerce}"
             exit 1
           fi

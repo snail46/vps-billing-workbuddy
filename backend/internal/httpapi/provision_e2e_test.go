@@ -124,8 +124,12 @@ func TestThePaidOrderProvisionsOnItsOwn(t *testing.T) {
 		AND type = 'instance.provisioned'`, userID); got != 1 {
 		t.Errorf("%d notifications were recorded, expected 1", got)
 	}
+	// The count is scoped to THIS subscription's instance: the database is
+	// shared with the rest of the suite, and their events are not ours.
 	if got := count(t, e, `SELECT count(*) FROM outbox_events
-		WHERE event_type = 'instance.provisioned.v1' AND aggregate_type = 'instance'`); got != 1 {
+		WHERE event_type = 'instance.provisioned.v1' AND aggregate_type = 'instance'
+		  AND aggregate_id = (SELECT id FROM instances WHERE subscription_id = $1)`,
+		subscriptionID); got != 1 {
 		t.Errorf("%d provisioned events were written, expected 1", got)
 	}
 }
