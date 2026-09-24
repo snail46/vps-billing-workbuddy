@@ -63,6 +63,12 @@ func (ar *adminRoutes) mountOn(mux chi.Router) {
 	// registration below is what states that requirement where the route lives.
 	ar.guarded(mux, http.MethodPost, "/subscriptions/{subscriptionID}/terminate",
 		"subscriptions.terminate", ar.api.terminateSubscription)
+
+	// The infrastructure surface is read-only (ADR-007 §6): the scheduler and the
+	// workflows write it, and the operator reads it here.
+	ar.guarded(mux, http.MethodGet, "/providers", "providers.read", ar.api.listProviders)
+	ar.guarded(mux, http.MethodGet, "/node-groups", "nodes.read", ar.api.listNodeGroups)
+	ar.guarded(mux, http.MethodGet, "/nodes", "nodes.read", ar.api.listNodes)
 }
 
 // public registers an endpoint reachable without a session.

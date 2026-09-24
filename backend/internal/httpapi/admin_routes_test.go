@@ -156,6 +156,10 @@ func TestAdminSurfaceHasExactlyTheDeclaredEndpoints(t *testing.T) {
 		// The first permission-gated endpoint: ending a customer's subscription is
 		// the platform's hand, and the permission it needs is seeded (0005).
 		"POST /api/v1/admin/subscriptions/{subscriptionID}/terminate": "subscriptions.terminate",
+		// The infrastructure surface is read-only (0006, ADR-007 §6).
+		"GET /api/v1/admin/providers":   "providers.read",
+		"GET /api/v1/admin/node-groups": "nodes.read",
+		"GET /api/v1/admin/nodes":       "nodes.read",
 	}
 
 	for route, requirement := range want {

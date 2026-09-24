@@ -52,6 +52,8 @@ type Deps struct {
 	// Commerce is a pointer for the same reason Auth is: a build without a commerce
 	// service mounts no commercial routes rather than ones that would fail.
 	Commerce *CommerceDeps
+	// Infra is the infrastructure surface's store.
+	Infra *InfraDeps
 }
 
 // Handler is the assembled HTTP surface.
@@ -124,7 +126,7 @@ func NewRouter(deps Deps) *Handler {
 	}))
 	r.Use(bmw.CORS(deps.Config.AllowedOrigins()))
 
-	api := &api{logger: logger, auth: deps.Auth, commerce: deps.Commerce}
+	api := &api{logger: logger, auth: deps.Auth, commerce: deps.Commerce, infra: deps.Infra}
 
 	// Router-level handlers cover paths that match no route at all, so the
 	// envelope holds even for a malformed URL.
@@ -232,6 +234,7 @@ type api struct {
 	logger   *slog.Logger
 	auth     *Auth
 	commerce *CommerceDeps
+	infra    *InfraDeps
 }
 
 func (a *api) notFound(w http.ResponseWriter, r *http.Request) {

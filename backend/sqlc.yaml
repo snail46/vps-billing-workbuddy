@@ -20,6 +20,7 @@ sql:
       - "migrations/0003_identity_rbac_seed.up.sql"
       - "migrations/0004_commerce.up.sql"
       - "migrations/0005_subscription.up.sql"
+      - "migrations/0006_infrastructure.up.sql"
     queries: "internal/db/queries"
     gen:
       go:

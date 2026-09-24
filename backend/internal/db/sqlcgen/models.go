@@ -89,6 +89,31 @@ type LedgerTransaction struct {
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
+type Node struct {
+	ID                uuid.UUID          `json:"id"`
+	ProviderID        uuid.UUID          `json:"provider_id"`
+	NodeGroupID       *uuid.UUID         `json:"node_group_id"`
+	ProviderNodeID    pgtype.Text        `json:"provider_node_id"`
+	Name              string             `json:"name"`
+	Region            string             `json:"region"`
+	Status            string             `json:"status"`
+	CpuTotal          pgtype.Numeric     `json:"cpu_total"`
+	MemoryTotalMb     int64              `json:"memory_total_mb"`
+	DiskTotalGb       int64              `json:"disk_total_gb"`
+	CpuAllocated      pgtype.Numeric     `json:"cpu_allocated"`
+	MemoryAllocatedMb int64              `json:"memory_allocated_mb"`
+	DiskAllocatedGb   int64              `json:"disk_allocated_gb"`
+	CpuReserved       pgtype.Numeric     `json:"cpu_reserved"`
+	MemoryReservedMb  int64              `json:"memory_reserved_mb"`
+	DiskReservedGb    int64              `json:"disk_reserved_gb"`
+	Weight            int32              `json:"weight"`
+	Capabilities      []byte             `json:"capabilities"`
+	LastSeenAt        pgtype.Timestamptz `json:"last_seen_at"`
+	Version           int64              `json:"version"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
 type NodeGroup struct {
 	ID        uuid.UUID          `json:"id"`
 	Name      string             `json:"name"`
@@ -192,6 +217,21 @@ type Product struct {
 	SortOrder       int32              `json:"sort_order"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Provider struct {
+	ID                uuid.UUID          `json:"id"`
+	Name              string             `json:"name"`
+	ProviderType      string             `json:"provider_type"`
+	Endpoint          pgtype.Text        `json:"endpoint"`
+	CredentialRef     pgtype.Text        `json:"credential_ref"`
+	Status            string             `json:"status"`
+	Version           pgtype.Text        `json:"version"`
+	Config            []byte             `json:"config"`
+	Capabilities      []byte             `json:"capabilities"`
+	LastHealthCheckAt pgtype.Timestamptz `json:"last_health_check_at"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Role struct {

@@ -136,11 +136,28 @@
 > 测试仍为本地唯一分歧，CI 真实 Redis 通过）。verify-local 32 项全绿，lint 0 issues。
 
 ## Phase 4 — Infrastructure Domain
-- [ ] provider/node group/node
-- [ ] capabilities
-- [ ] reservation
-- [ ] deterministic scheduler
-- [ ] MockProvider
+- [x] provider/node group/node
+- [x] capabilities
+- [x] reservation
+- [x] deterministic scheduler
+- [x] MockProvider
+
+> **状态：实现完成，本地全量验证通过；CI 待复验。**
+>
+> 关键发现：`providers` 与 `nodes` 表**从未被创建**——0004 的 13 张表只是
+> FK 目标集，Gate 的 13 表断言也是证据。0006 补齐两表 + 三个状态词表 CHECK
+> （nodes 用 docs/05 的机器；groups/providers 是 on/off 开关）+ 容量约束
+> （allocated/reserved 不可负、合计不超容量）。
+>
+> **ADR-007**：预留 = node 行上的条件转移（无 reservations 表——参考 schema
+> 刻意没有，泄漏的 reserved 由 Reconciler 从在途 operation 重建）；调度器
+> **确定性**（负载比 → weight → id），同样的库状态必选同样的节点；
+> 能力驱动（Capability）而非 provider 名称判断；契约测试套件
+> （`provider/contracttest`）是任何 Provider 实现的必经检验，
+> MockProvider 是第一个租户，Phase 7 的直连 Provider 复用同一套。
+>
+> 管理面只读（providers/node-groups/nodes 列表，权限门控），写入随 admin web。
+> Gate 断言同步：tables 13→15、constraints 6→7、indexes 5→6。
 
 ## Phase 5 — Operation System
 - [ ] operations/steps

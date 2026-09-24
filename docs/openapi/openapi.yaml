@@ -590,6 +590,72 @@ paths:
         "403": {description: The administrator does not hold the permission}
         "404": {description: No such subscription}
         "409": {description: The subscription has already ended}
+  /admin/providers:
+    get:
+      operationId: listProviders
+      summary: The platform's provider records
+      responses:
+        "200":
+          description: Providers, name order
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [providers]
+                        properties:
+                          providers:
+                            type: array
+                            items: {$ref: "#/components/schemas/AdminProvider"}
+        "403": {description: The administrator does not hold providers.read}
+  /admin/node-groups:
+    get:
+      operationId: listNodeGroups
+      summary: The scheduling groups
+      responses:
+        "200":
+          description: Node groups, name order
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [node_groups]
+                        properties:
+                          node_groups:
+                            type: array
+                            items: {$ref: "#/components/schemas/AdminNodeGroup"}
+        "403": {description: The administrator does not hold nodes.read}
+  /admin/nodes:
+    get:
+      operationId: listNodes
+      summary: The nodes with their capacity book
+      responses:
+        "200":
+          description: Nodes, name order
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        required: [nodes]
+                        properties:
+                          nodes:
+                            type: array
+                            items: {$ref: "#/components/schemas/AdminNode"}
+        "403": {description: The administrator does not hold nodes.read}
   /instances:
     get:
       operationId: listInstances
@@ -863,6 +929,44 @@ components:
                       description: The deadline by which the current state must resolve}
         cancel_at_period_end: {type: boolean}
         ended_at: {type: string, format: date-time, nullable: true}
+        version: {type: integer, format: int64}
+    AdminProvider:
+      type: object
+      required: [id, name, type, status]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        type: {type: string, enum: [direct, agent]}
+        status: {type: string, enum: [active, disabled]}
+    AdminNodeGroup:
+      type: object
+      required: [id, name, region, status]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        region: {type: string}
+        status: {type: string, enum: [active, disabled]}
+    AdminNode:
+      type: object
+      required: [id, provider_id, name, region, status, cpu_total, memory_total_mb,
+                 disk_total_gb, weight, version]
+      properties:
+        id: {type: string, format: uuid}
+        provider_id: {type: string, format: uuid}
+        group_id: {type: string, format: uuid, nullable: true}
+        name: {type: string}
+        region: {type: string}
+        status: {type: string, enum: [online, degraded, draining, maintenance, offline]}
+        cpu_total: {type: number}
+        cpu_allocated: {type: number}
+        cpu_reserved: {type: number}
+        memory_total_mb: {type: integer, format: int64}
+        memory_allocated_mb: {type: integer, format: int64}
+        memory_reserved_mb: {type: integer, format: int64}
+        disk_total_gb: {type: integer, format: int64}
+        disk_allocated_gb: {type: integer, format: int64}
+        disk_reserved_gb: {type: integer, format: int64}
+        weight: {type: integer}
         version: {type: integer, format: int64}
     OperationAccepted:
       type: object
