@@ -365,6 +365,31 @@ type RolePermission struct {
 	PermissionID uuid.UUID `json:"permission_id"`
 }
 
+type RunmanAgent struct {
+	ID         uuid.UUID          `json:"id"`
+	NodeID     string             `json:"node_id"`
+	TokenHash  string             `json:"token_hash"`
+	Status     string             `json:"status"`
+	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
+type RunmanCommand struct {
+	ID             uuid.UUID          `json:"id"`
+	AgentID        uuid.UUID          `json:"agent_id"`
+	Type           string             `json:"type"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	Payload        []byte             `json:"payload"`
+	Status         string             `json:"status"`
+	Result         []byte             `json:"result"`
+	ErrorCode      pgtype.Text        `json:"error_code"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	DeliveredAt    pgtype.Timestamptz `json:"delivered_at"`
+	FinishedAt     pgtype.Timestamptz `json:"finished_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Subscription struct {
 	ID                 uuid.UUID          `json:"id"`
 	UserID             uuid.UUID          `json:"user_id"`

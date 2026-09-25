@@ -16,6 +16,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/authmw"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/commerce"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/config"
@@ -26,6 +28,7 @@ import (
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/logging"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/payment/fakegateway"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/redisx"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/runman"
 	adminsurface "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/adminsurface"
 	commercestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/commerce"
 	identitystore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/identity"
@@ -201,6 +204,12 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Logger: logger,
 		}),
 	})
+
+	// The runman gateway (ADR-013): the agent surface is public in chi's
+	// sense and authenticated by node tokens. It hangs off the product base
+	// path so the agent's requests share the API's routing and logging.
+	runmanStore := runman.New(pool)
+	runman.Mount(router.Route("/api/v1", func(_ chi.Router) {}), runmanStore)
 
 	srv := &http.Server{
 		Addr:    cfg.HTTPAddr,

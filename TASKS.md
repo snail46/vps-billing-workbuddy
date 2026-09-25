@@ -296,12 +296,25 @@
 > useQuery/useMutation 包装默认 ApiError。
 
 ## Phase 10 — Runman Provider
-- [ ] Gateway
-- [ ] auth/connection registry
-- [ ] heartbeat/command/result/state
-- [ ] traffic/NAT
-- [ ] reconnect
-- [ ] Contract tests
+- [x] Gateway
+- [x] auth/connection registry
+- [x] heartbeat/command/result/state
+- [x] traffic/NAT
+- [x] reconnect
+- [x] Contract tests
+
+> **状态：实现完成，本地全量验证通过；CI 待复验。**
+>
+> **ADR-013**：网关是 pull 式长轮询 HTTP，不是需要维持诚实的 socket——
+> "在线"= last_seen_at 在新鲜窗口内的派生事实，任何副本可服务任何 agent，
+> 重连只是下一个请求。连接注册表在数据库：runman_agents（token 只存哈希）+
+> runman_commands（queued→delivered→succeeded|failed，幂等键 UNIQUE——网关重投
+> 即同一行，agent 重答即同一接受）。适配器 = 带截止时间的翻译器：每个
+> provider 方法变一条命令，等待超时即 PROVIDER_TIMEOUT（可重试——命令可能仍
+> 会落地）；节点按接口的不透明字符串寻址，读/操作经 create 时记录的 placement
+> 路由，无记录的实例 = INSTANCE_NOT_FOUND（未知实例不是故障）。契约套件
+> 第三次发挥门的作用：mock、直连、runman 三种传输，同一套证明；
+> fake agent 在进程内驱动网关状态机。
 
 ## Phase 11 — Reconciler / Resilience
 - [ ] desired vs observed
