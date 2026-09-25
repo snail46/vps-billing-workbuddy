@@ -303,7 +303,10 @@
 - [x] reconnect
 - [x] Contract tests
 
-> **状态：实现完成，本地全量验证通过；CI 待复验。**
+> **状态：已关闭。** CI run #38（提交 `d1a3613`）五 job 全绿：runman 契约
+> 套件与网关状态机在 CI 集成层实证通过。运行 #37 曾因 server main 在
+> `/api/v1` 上二次 Route/Mount 触发 chi panic 而红——网关改为经 Deps
+> 在 router 内部挂载，agent 面记入契约文档。
 >
 > **ADR-013**：网关是 pull 式长轮询 HTTP，不是需要维持诚实的 socket——
 > "在线"= last_seen_at 在新鲜窗口内的派生事实，任何副本可服务任何 agent，
