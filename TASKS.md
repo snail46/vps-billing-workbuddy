@@ -349,7 +349,8 @@
 - [x] upgrade/rollback
 - [x] acceptance suite
 
-> **状态：实现完成，本地全量验证通过；CI 待复验。**
+> **状态：已关闭。** CI run #42（提交 `251a9ce`）五 job 全绿：0012 迁移、
+> 2FA 登录强制测试与 metrics 在 CI 实证通过。**V1 Phase 0-12 全部关闭。**
 >
 > **ADR-015**：2FA 是真 TOTP（RFC 6238，stdlib HMAC——零依赖），
 > 在登录路径强制执行：setup 铸造 secret 但 flag 不动，enable 验一个码
