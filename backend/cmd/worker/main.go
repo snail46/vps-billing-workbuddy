@@ -32,7 +32,9 @@ import (
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/provider"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/provider/mockprovider"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/provision"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/reconciler"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/redisx"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/runman"
 	commercestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/commerce"
 	infrastore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/infra"
 	instancestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/instance"
@@ -152,6 +154,15 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 		return fmt.Errorf("register the provision bridge: %w", err)
 	}
 
+	reconcilerDeps := reconciler.Deps{
+		Operations: opStore,
+		Instances:  instancestore.New(pool),
+		Nodes:      infraStore,
+		Providers:  map[string]provider.Provider{gateway.Name(): gateway},
+		Runman:     runman.New(pool),
+		Logger:     logger,
+	}
+
 	logger.InfoContext(ctx, "worker ready")
 
 	ticker := time.NewTicker(cfg.WorkerTickInterval)
@@ -202,6 +213,27 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 			} else if released > 0 {
 				logger.InfoContext(workCtx, "expired reservations released",
 					slog.Int("count", released))
+			}
+			// The subscription sweep (ADR-006): expiry and renewal's own
+			// transitions, on the same tick that keeps everything else honest.
+			if sweep, err := commerceSvc.Sweep(workCtx, time.Now().UTC()); err != nil {
+				logger.ErrorContext(workCtx, "the subscription sweep failed",
+					slog.String("error", err.Error()))
+			} else {
+				logger.InfoContext(workCtx, "subscription sweep complete",
+					slog.Int("expired", sweep.Expired), slog.Int("renewed", sweep.Renewed))
+			}
+			// The reconciler (ADR-014): drift, stuck workflows, adoption and
+			// node silence — the checks no individual workflow can run.
+			if result, err := reconcilerDeps.Run(workCtx, time.Now().UTC()); err != nil {
+				logger.ErrorContext(workCtx, "the reconciler pass failed",
+					slog.String("error", err.Error()))
+			} else {
+				logger.InfoContext(workCtx, "reconciler pass complete",
+					slog.Int("cancelled_stale_operations", result.CancelledStaleOperations),
+					slog.Int("reobserved_drifted", result.ReobservedDrifted),
+					slog.Int("adopted_timed_out_creates", result.AdoptedTimedOutCreates),
+					slog.Int("stale_agents", result.StaleAgents))
 			}
 			workCancel()
 		}

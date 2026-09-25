@@ -38,3 +38,21 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 -- The action paths read the machine they act on; the runner too.
 -- name: InstanceByID :one
 SELECT * FROM instances WHERE id = $1 AND deleted_at IS NULL;
+
+-- The reconciler's drift page: machines whose wish and whose record disagree
+-- and that no live workflow is working on.
+-- name: DriftingInstances :many
+SELECT i.*
+FROM instances i
+WHERE i.deleted_at IS NULL
+  AND i.desired_state <> i.observed_state
+  AND i.observed_state <> 'provisioning' -- a machine being built belongs to its workflow, not to drift
+  AND i.node_id IS NOT NULL AND i.provider_id IS NOT NULL
+  AND i.provider_instance_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM operations o
+    WHERE o.resource_type = 'instance' AND o.resource_id = i.id
+      AND o.status IN ('queued', 'running', 'waiting_provider', 'waiting_resource', 'verifying', 'retrying')
+  )
+ORDER BY i.created_at
+LIMIT 50;

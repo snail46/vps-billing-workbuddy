@@ -196,3 +196,13 @@ func pgText(value string) pgtype.Text {
 	}
 	return pgtype.Text{String: value, Valid: true}
 }
+
+// StaleAgents reads the active agents whose last-seen stamp aged past the
+// given moment — the reconciler's node-silence page.
+func (s *Store) StaleAgents(ctx context.Context, staleBefore time.Time) ([]sqlcgen.RunmanAgent, error) {
+	agents, err := s.queries.StaleRunmanAgents(ctx, pgtype.Timestamptz{Time: staleBefore, Valid: true})
+	if err != nil {
+		return nil, fmt.Errorf("runman: read stale agents: %w", err)
+	}
+	return agents, nil
+}

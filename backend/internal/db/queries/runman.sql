@@ -58,3 +58,9 @@ SELECT * FROM runman_agents
 WHERE node_id = $1 AND status = 'active'
 ORDER BY created_at DESC
 LIMIT 1;
+
+-- name: StaleRunmanAgents :many
+SELECT * FROM runman_agents
+WHERE status = 'active' AND (last_seen_at IS NULL OR last_seen_at < $1)
+ORDER BY created_at
+LIMIT 50;

@@ -391,3 +391,31 @@ func (s *Store) OpenByResource(ctx context.Context, resourceType string, resourc
 	}
 	return fromRow(row), true, nil
 }
+
+// StaleLiveOperations reads the page of live workflows whose record has gone
+// silent past the given moment — the reconciler's stuck-operation page.
+func (s *Store) StaleLiveOperations(ctx context.Context, staleBefore time.Time) ([]operation.Operation, error) {
+	rows, err := s.queries.StaleLiveOperations(ctx, pgtype.Timestamptz{Time: staleBefore, Valid: true})
+	if err != nil {
+		return nil, fmt.Errorf("operationstore: read stale operations: %w", err)
+	}
+	operations := make([]operation.Operation, 0, len(rows))
+	for i := range rows {
+		operations = append(operations, fromRow(rows[i]))
+	}
+	return operations, nil
+}
+
+// FailedProvisionOperations reads provision chains the engine failed after
+// the given moment — the reconciler's create-success-but-timeout page.
+func (s *Store) FailedProvisionOperations(ctx context.Context, createdAfter time.Time) ([]operation.Operation, error) {
+	rows, err := s.queries.FailedProvisionOperations(ctx, pgtype.Timestamptz{Time: createdAfter, Valid: true})
+	if err != nil {
+		return nil, fmt.Errorf("operationstore: read failed provisions: %w", err)
+	}
+	operations := make([]operation.Operation, 0, len(rows))
+	for i := range rows {
+		operations = append(operations, fromRow(rows[i]))
+	}
+	return operations, nil
+}

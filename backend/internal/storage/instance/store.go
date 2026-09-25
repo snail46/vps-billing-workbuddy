@@ -271,3 +271,17 @@ func numericFloat(value pgtype.Numeric) float64 {
 	}
 	return parsed
 }
+
+// Drifting reads the page of machines whose wish and whose record disagree
+// and that no live workflow is working on — the reconciler's drift page.
+func (s *Store) Drifting(ctx context.Context) ([]Instance, bool, error) {
+	rows, err := s.queries.DriftingInstances(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf("instancestore: read drifting instances: %w", err)
+	}
+	instances := make([]Instance, 0, len(rows))
+	for i := range rows {
+		instances = append(instances, fromRow(rows[i]))
+	}
+	return instances, true, nil
+}

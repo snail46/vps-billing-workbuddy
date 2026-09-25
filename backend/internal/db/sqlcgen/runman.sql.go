@@ -280,6 +280,41 @@ func (q *Queries) RunmanCommandByIdempotencyKey(ctx context.Context, idempotency
 	return i, err
 }
 
+const staleRunmanAgents = `-- name: StaleRunmanAgents :many
+SELECT id, node_id, token_hash, status, last_seen_at, created_at, updated_at FROM runman_agents
+WHERE status = 'active' AND (last_seen_at IS NULL OR last_seen_at < $1)
+ORDER BY created_at
+LIMIT 50
+`
+
+func (q *Queries) StaleRunmanAgents(ctx context.Context, lastSeenAt pgtype.Timestamptz) ([]RunmanAgent, error) {
+	rows, err := q.db.Query(ctx, staleRunmanAgents, lastSeenAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RunmanAgent{}
+	for rows.Next() {
+		var i RunmanAgent
+		if err := rows.Scan(
+			&i.ID,
+			&i.NodeID,
+			&i.TokenHash,
+			&i.Status,
+			&i.LastSeenAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const touchRunmanAgent = `-- name: TouchRunmanAgent :execrows
 UPDATE runman_agents
 SET last_seen_at = $2, updated_at = $2

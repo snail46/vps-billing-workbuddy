@@ -140,3 +140,23 @@ WHERE resource_type = $1 AND resource_id = $2
   AND status IN ('queued', 'running', 'waiting_provider', 'waiting_resource', 'verifying', 'retrying')
 ORDER BY created_at DESC
 LIMIT 1;
+
+-- The reconciler's stuck-operation page: live states that have not moved
+-- past the staleness threshold. The updated_at comparison is the point — a
+-- workflow mid-flight writes as it goes, so silence is the symptom.
+-- name: StaleLiveOperations :many
+SELECT * FROM operations
+WHERE status IN ('running', 'waiting_provider', 'waiting_resource', 'verifying')
+  AND updated_at < $1
+ORDER BY created_at
+LIMIT 50;
+
+-- The create-success-but-timeout page: provision chains the engine gave up
+-- on while the provider may still have been building.
+-- name: FailedProvisionOperations :many
+SELECT * FROM operations
+WHERE type = 'provision.instance' AND status = 'failed'
+  AND error_code IN ('PROVIDER_TIMEOUT', 'PROVIDER_UNREACHABLE')
+  AND created_at > $1
+ORDER BY created_at
+LIMIT 50;

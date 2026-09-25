@@ -195,6 +195,60 @@ func (q *Queries) CreateOperationStep(ctx context.Context, arg CreateOperationSt
 	return err
 }
 
+const failedProvisionOperations = `-- name: FailedProvisionOperations :many
+SELECT id, type, resource_type, resource_id, status, phase, progress, message_key, provider_id, provider_operation_id, idempotency_key, retryable, retry_count, max_retries, run_after, error_code, error_message, trace_id, started_at, finished_at, created_at, updated_at FROM operations
+WHERE type = 'provision.instance' AND status = 'failed'
+  AND error_code IN ('PROVIDER_TIMEOUT', 'PROVIDER_UNREACHABLE')
+  AND created_at > $1
+ORDER BY created_at
+LIMIT 50
+`
+
+// The create-success-but-timeout page: provision chains the engine gave up
+// on while the provider may still have been building.
+func (q *Queries) FailedProvisionOperations(ctx context.Context, createdAt pgtype.Timestamptz) ([]Operation, error) {
+	rows, err := q.db.Query(ctx, failedProvisionOperations, createdAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Operation{}
+	for rows.Next() {
+		var i Operation
+		if err := rows.Scan(
+			&i.ID,
+			&i.Type,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.Status,
+			&i.Phase,
+			&i.Progress,
+			&i.MessageKey,
+			&i.ProviderID,
+			&i.ProviderOperationID,
+			&i.IdempotencyKey,
+			&i.Retryable,
+			&i.RetryCount,
+			&i.MaxRetries,
+			&i.RunAfter,
+			&i.ErrorCode,
+			&i.ErrorMessage,
+			&i.TraceID,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const finishOperationStep = `-- name: FinishOperationStep :execrows
 UPDATE operation_steps
 SET status = $2, error_code = $3, error_message = $4, finished_at = $5, updated_at = $5
@@ -426,6 +480,60 @@ func (q *Queries) SetOperationProvider(ctx context.Context, arg SetOperationProv
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const staleLiveOperations = `-- name: StaleLiveOperations :many
+SELECT id, type, resource_type, resource_id, status, phase, progress, message_key, provider_id, provider_operation_id, idempotency_key, retryable, retry_count, max_retries, run_after, error_code, error_message, trace_id, started_at, finished_at, created_at, updated_at FROM operations
+WHERE status IN ('running', 'waiting_provider', 'waiting_resource', 'verifying')
+  AND updated_at < $1
+ORDER BY created_at
+LIMIT 50
+`
+
+// The reconciler's stuck-operation page: live states that have not moved
+// past the staleness threshold. The updated_at comparison is the point — a
+// workflow mid-flight writes as it goes, so silence is the symptom.
+func (q *Queries) StaleLiveOperations(ctx context.Context, updatedAt pgtype.Timestamptz) ([]Operation, error) {
+	rows, err := q.db.Query(ctx, staleLiveOperations, updatedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Operation{}
+	for rows.Next() {
+		var i Operation
+		if err := rows.Scan(
+			&i.ID,
+			&i.Type,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.Status,
+			&i.Phase,
+			&i.Progress,
+			&i.MessageKey,
+			&i.ProviderID,
+			&i.ProviderOperationID,
+			&i.IdempotencyKey,
+			&i.Retryable,
+			&i.RetryCount,
+			&i.MaxRetries,
+			&i.RunAfter,
+			&i.ErrorCode,
+			&i.ErrorMessage,
+			&i.TraceID,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const startOperationStep = `-- name: StartOperationStep :execrows

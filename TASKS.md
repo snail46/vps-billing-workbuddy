@@ -320,12 +320,24 @@
 > fake agent 在进程内驱动网关状态机。
 
 ## Phase 11 — Reconciler / Resilience
-- [ ] desired vs observed
-- [ ] stuck operations
-- [ ] expired reservations
-- [ ] node heartbeat expiry
-- [ ] create-success-but-timeout
-- [ ] Redis restart / worker crash
+- [x] desired vs observed
+- [x] stuck operations
+- [x] expired reservations
+- [x] node heartbeat expiry
+- [x] create-success-but-timeout
+- [x] Redis restart / worker crash
+
+> **状态：实现完成，本地全量验证通过；CI 待复验。**
+>
+> **ADR-014**：reconciler = worker tick 上的一组小读 + 条件写，幂等、限页、
+> 可并发——能双发的 reconciler 本身就是待 reconcile 的东西。卡死的操作被
+> **取消**而非复活（复活的副本无法诚实重建进度与步骤，重试属于新的入队）；
+> 漂移用**观测**修正，绝不写"希望为真"的状态（drift 页排除 provisioning——
+> 建造中的机器属于它的 workflow）；超时的 create 一旦 provider 报 running 即
+> **收养**（记录改 running + 客户通知——存在的机器是事实）；节点静默只**计量**
+> 不发明状态迁移（离线在 ADR-013 里就是派生事实）。Redis 无钱所在——重启
+> 不算事故（会话重登、限流等窗口）。集成测试四条：卡死操作取消、漂移被
+> 观测修正、超时 create 被收养（含通知行）、静默 agent 被计数。
 
 ## Phase 12 — Release Hardening
 - [ ] security
