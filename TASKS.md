@@ -327,7 +327,8 @@
 - [x] create-success-but-timeout
 - [x] Redis restart / worker crash
 
-> **状态：实现完成，本地全量验证通过；CI 待复验。**
+> **状态：已关闭。** CI run #40（提交 `b21b6f1`）五 job 全绿：reconciler
+> 四条集成测试（取消/观测/收养/计数）与全部既有证明在 CI 实证通过。
 >
 > **ADR-014**：reconciler = worker tick 上的一组小读 + 条件写，幂等、限页、
 > 可并发——能双发的 reconciler 本身就是待 reconcile 的东西。卡死的操作被
