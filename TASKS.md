@@ -254,7 +254,8 @@
 - [x] all page states
 - [x] bilingual
 
-> **状态：实现完成，本地全量验证通过；CI 待复验。**
+> **状态：已关闭。** CI run #33（提交 `e5bf09e`）五 job 全绿：0009 迁移在真实
+> PostgreSQL 前滚+回滚，全部用户面端点与前端构建在 CI 实证通过。
 >
 > **ADR-011**：所有权是 SQL 里的 join，不是 handler 里的二次检查——
 > 实例详情/钱包/账单/通知/工单的每条读都经所有权链（instance→subscription→user），
