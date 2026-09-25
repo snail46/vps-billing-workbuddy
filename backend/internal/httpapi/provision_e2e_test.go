@@ -14,7 +14,18 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/commerce"
+	sqlcgen "github.com/snail46/vps-billing-workbuddy/backend/internal/db/sqlcgen"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/operation"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/outbox"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/provider"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/provider/lxdapi"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/provider/lxdapi/lxdtest"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/provision"
+	commercestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/commerce"
+	infrastore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/infra"
 	instancestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/instance"
+	operationstore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/operation"
 )
 
 // driveProvision runs the worker's halves in-process until the subscription's
@@ -64,15 +75,15 @@ func subscriptionIDForUser(t *testing.T, e *e2eEnv, userID uuid.UUID) string {
 	return id
 }
 
-// seedProviderAndNode inserts the provider row the instance record names and
-// one node with more capacity than the seeded plan needs.
-func seedProviderAndNode(t *testing.T, e *e2eEnv) {
+// seedProviderAndNode inserts a provider row named for the gateway under test
+// and one node with more capacity than the seeded plan needs.
+func seedProviderAndNode(t *testing.T, e *e2eEnv, providerName string) {
 	t.Helper()
 	ctx := context.Background()
 	providerID := uuid.New()
 	if _, err := e.pool.Exec(ctx, `
 		INSERT INTO providers (id, name, provider_type, status)
-		VALUES ($1, 'mock', 'direct', 'active')`, providerID); err != nil {
+		VALUES ($1, $2, 'direct', 'active')`, providerID, providerName); err != nil {
 		t.Fatalf("insert the provider: %v", err)
 	}
 	t.Cleanup(func() {
@@ -88,7 +99,7 @@ func TestThePaidOrderProvisionsOnItsOwn(t *testing.T) {
 
 	userID, cookie, token := signUp(t, e)
 	entry := seedCatalog(t, e)
-	seedProviderAndNode(t, e)
+	seedProviderAndNode(t, e, "mock")
 
 	// Browse, order, pay: the journey up to the money is Phase 2's, re-walked
 	// here because the Gate is the whole chain, not its parts.
@@ -140,7 +151,7 @@ func TestAHundredCallbacksStillProvisionOnce(t *testing.T) {
 
 	userID, cookie, token := signUp(t, e)
 	entry := seedCatalog(t, e)
-	seedProviderAndNode(t, e)
+	seedProviderAndNode(t, e, "mock")
 
 	order := placeOrderAndPayment(t, e, entry, cookie, token)
 	if rec := e.deliverWebhook(t, string(order.callback), order.signature); rec.Code != http.StatusOK {
@@ -200,7 +211,7 @@ func TestAProvisionWithoutCapacityIsRetryable(t *testing.T) {
 
 	userID, cookie, token := signUp(t, e)
 	entry := seedCatalog(t, e)
-	seedProviderAndNode(t, e)
+	seedProviderAndNode(t, e, "mock")
 	// The scheduler has nothing that can hold this plan: the demand side is
 	// what the test owns, so the plan asks for more cores than any node can
 	// carry — a premise no concurrent package's seed can invalidate. Taking
@@ -230,4 +241,84 @@ func TestAProvisionWithoutCapacityIsRetryable(t *testing.T) {
 		subscriptionID); got != 1 {
 		t.Errorf("%d operations are parked for retry, expected 1", got)
 	}
+}
+
+// TestTheJourneyRunsOnTheDirectProvider is the phase's Gate: the same
+// journey — browse, order, pay, provision — driven by the LXD adapter against
+// a LXD-shaped server, through the runner and the bridge the mock used. The
+// business core is untouched: the provider map is the only seam.
+func TestTheJourneyRunsOnTheDirectProvider(t *testing.T) {
+	e := newE2E(t)
+	ctx := context.Background()
+
+	// The direct provider and the LXD-shaped server behind it.
+	fakeLXD, endpoint := lxdtest.NewServer(t)
+	direct := lxdapi.New(lxdapi.Config{Endpoint: endpoint, Token: "test-token"})
+
+	// A second engine, wired exactly as the worker wires it, except the
+	// provider map names the LXD adapter. The runner, the bridge, the stores
+	// and the operation machine are the same code the mock's journey ran.
+	commerceStore := commercestore.New(e.pool)
+	commerceSvc, err := commerce.NewService(commerce.Deps{Store: commerceStore})
+	if err != nil {
+		t.Fatalf("build the commerce service: %v", err)
+	}
+	engine := operation.NewEngine(operationstore.New(e.pool), infrastore.New(e.pool),
+		testLogger(), operation.DefaultMaxRetries)
+	if err := engine.Register(provision.OperationType, provision.NewRunner(provision.Deps{
+		Subscriptions: commerceSvc,
+		Nodes:         infrastore.New(e.pool),
+		Instances:     instancestore.New(e.pool),
+		Providers:     map[string]provider.Provider{direct.Name(): direct},
+		Outbox:        commerceStore,
+		Logger:        testLogger(),
+	})); err != nil {
+		t.Fatalf("register the provision runner: %v", err)
+	}
+	publisher := outbox.New(sqlcgen.New(e.pool), testLogger())
+	if err := publisher.Register(commerce.EventSubscriptionActivated,
+		provision.HandleSubscriptionActivated(provision.BridgeDeps{Engine: engine})); err != nil {
+		t.Fatalf("register the provision bridge: %v", err)
+	}
+
+	// The row the instance record names matches the adapter; the plan's
+	// virtualization is one the LXD adapter declares.
+	userID, cookie, token := signUp(t, e)
+	entry := seedCatalog(t, e)
+	seedProviderAndNode(t, e, direct.Name())
+
+	order := placeOrderAndPayment(t, e, entry, cookie, token)
+	if rec := e.deliverWebhook(t, string(order.callback), order.signature); rec.Code != http.StatusOK {
+		t.Fatalf("the callback was refused: %d (%s)", rec.Code, rec.Body.String())
+	}
+	subscriptionID := subscriptionIDForUser(t, e, userID)
+
+	parsed, err := uuid.Parse(subscriptionID)
+	if err != nil {
+		t.Fatalf("the subscription id is not a uuid: %v", err)
+	}
+	for i := 0; i < 64; i++ {
+		if _, err := publisher.Deliver(ctx); err != nil {
+			t.Fatalf("the outbox tick failed: %v", err)
+		}
+		if _, err := engine.Tick(ctx); err != nil {
+			t.Fatalf("the engine tick failed: %v", err)
+		}
+		instance, exists, err := instancestore.New(e.pool).BySubscription(ctx, parsed)
+		if err != nil {
+			t.Fatalf("read the instance: %v", err)
+		}
+		if exists && instance.ObservedState == instancestore.ObservedRunning {
+			// The machine the LXD adapter made is the machine the customer
+			// sees running.
+			if instance.ProviderInstanceID == nil {
+				t.Fatal("the running instance carries no provider identity")
+			}
+			if fakeLXD.InstanceCount() != 1 {
+				t.Errorf("the LXD server holds %d instances, expected 1", fakeLXD.InstanceCount())
+			}
+			return
+		}
+	}
+	t.Fatal("the journey ended without a running instance on the direct provider")
 }

@@ -221,10 +221,28 @@
 > `ux_instance_provider_id` 唯一索引）。Gate 断言：表 17、索引 7。
 
 ## Phase 7 — Direct Provider
-- [ ] CLICD 或 LXDAPI Adapter
-- [ ] Contract tests
-- [ ] timeout/idempotency
+- [x] CLICD 或 LXDAPI Adapter
+- [x] Contract tests
+- [x] timeout/idempotency
 **Gate:** 替换 MockProvider 不修改 Business Core。
+
+> **状态：实现完成，本地全量验证通过；CI 待复验。**
+>
+> **ADR-010**：LXDAPI 适配器（`internal/provider/lxdapi`）——只依赖
+> `internal/provider`，业务核心零接触。**实例的 LXD 名字即幂等维度**：
+> 名字由幂等键确定性派生，重试的 create 撞上"already exists"即原样回答
+> 同一 operation 标识——provider 唯一性与平台唯一性是同一性质的两面。
+> LXD 全异步：每个变更返回 operation，`/wait` 服务端轮询，超时即
+> `PROVIDER_TIMEOUT`（Retryable，引擎退避接手）。错误按 docs/06 词表
+> **一次性**映射；404 按消息内容区分（"instance not found"≠"operation not
+> found"）。LXD 做不到的（API 改密码）→ `UNSUPPORTED_OPERATION`，如实陈述。
+>
+> **契约套件即证明**：Phase 4 针对 mock 写的同一套套件，LXD 适配器对着
+> 假 LXD 服务器（`lxdtest`，说真实 API 的形状）全部通过。
+> **Gate 实证**：`TestTheJourneyRunsOnTheDirectProvider`——同一条
+> 浏览→下单→支付→开通旅程，provider map 换成 LXD 适配器，业务核心一行未动，
+> 实例在假 LXD 上运行。
+> proxy devices = 端口转发面；`instance_networks` 行与网络两步在 Phase 8+ 激活。
 
 ## Phase 8 — User Web
 - [ ] dashboard/catalog/checkout
