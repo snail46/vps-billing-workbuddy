@@ -226,7 +226,8 @@
 - [x] timeout/idempotency
 **Gate:** 替换 MockProvider 不修改 Business Core。
 
-> **状态：实现完成，本地全量验证通过；CI 待复验。**
+> **状态：已关闭。** CI run #31（提交 `ed7095e`）五 job 全绿：契约套件与
+> 直连旅程在 CI 实证通过。
 >
 > **ADR-010**：LXDAPI 适配器（`internal/provider/lxdapi`）——只依赖
 > `internal/provider`，业务核心零接触。**实例的 LXD 名字即幂等维度**：
