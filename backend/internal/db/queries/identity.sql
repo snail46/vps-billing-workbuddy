@@ -87,3 +87,16 @@ INSERT INTO audit_events (
 ) VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 );
+
+-- The TOTP enrollment (ADR-015 §1): secret and flag move in one write, and
+-- the enable path verifies a code before the flag flips.
+-- name: SetAdminTwoFactor :execrows
+UPDATE admins
+SET two_factor_secret = $2, two_factor_enabled = $3, updated_at = $4
+WHERE id = $1;
+
+-- name: AdminTwoFactorByAdmin :one
+SELECT id, two_factor_secret, two_factor_enabled FROM admins WHERE id = $1;
+
+-- name: AdminTwoFactorEmail :one
+SELECT email FROM admins WHERE id = $1;

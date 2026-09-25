@@ -217,3 +217,10 @@ SELECT * FROM system_settings ORDER BY key;
 
 -- name: AdminListOperations :many
 SELECT * FROM operations ORDER BY created_at DESC LIMIT 100;
+
+-- name: MetricsOperationsByStatus :many
+SELECT status, count(*) AS count FROM operations GROUP BY status;
+
+-- name: MetricsInstancesByState :many
+SELECT observed_state, count(*) AS count FROM instances
+WHERE deleted_at IS NULL GROUP BY observed_state;

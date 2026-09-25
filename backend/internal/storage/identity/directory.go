@@ -149,13 +149,17 @@ func toUser(row sqlcgen.User) identity.User {
 
 func toAdmin(row sqlcgen.Admin) identity.Admin {
 	admin := identity.Admin{
-		ID:           row.ID,
-		Email:        row.Email,
-		PasswordHash: row.PasswordHash,
-		Status:       row.Status,
+		ID:               row.ID,
+		Email:            row.Email,
+		PasswordHash:     row.PasswordHash,
+		Status:           row.Status,
+		TwoFactorEnabled: row.TwoFactorEnabled,
 	}
 	if row.DisplayName.Valid {
 		admin.DisplayName = row.DisplayName.String
+	}
+	if row.TwoFactorSecret.Valid {
+		admin.TwoFactorSecret = row.TwoFactorSecret.String
 	}
 	return admin
 }

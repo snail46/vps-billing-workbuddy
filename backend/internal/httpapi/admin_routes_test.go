@@ -163,6 +163,34 @@ func TestAdminSurfaceHasExactlyTheDeclaredEndpoints(t *testing.T) {
 		// The operation system's readers (0007, ADR-008).
 		"GET /api/v1/admin/operations/{operationID}": "operations.read",
 		"GET /api/v1/admin/operations/events":        "operations.read",
+		// The second factor guards the caller's own account, so the
+		// requirement is the session, not a permission (ADR-015 §1).
+		"POST /api/v1/admin/auth/2fa/setup":   "authenticated",
+		"POST /api/v1/admin/auth/2fa/enable":  "authenticated",
+		"POST /api/v1/admin/auth/2fa/disable": "authenticated",
+		// The operator's console (ADR-012).
+		"GET /api/v1/admin/overview":                     "operations.read",
+		"GET /api/v1/admin/operations":                   "operations.read",
+		"GET /api/v1/admin/users":                        "users.read",
+		"GET /api/v1/admin/users/{userID}":               "users.read",
+		"POST /api/v1/admin/users/{userID}/suspend":      "users.suspend",
+		"POST /api/v1/admin/users/{userID}/activate":     "users.suspend",
+		"GET /api/v1/admin/products":                     "products.read",
+		"GET /api/v1/admin/orders":                       "orders.read",
+		"GET /api/v1/admin/orders/{orderID}":             "orders.read",
+		"GET /api/v1/admin/payments":                     "payments.read",
+		"GET /api/v1/admin/ledger":                       "ledger.read",
+		"GET /api/v1/admin/subscriptions":                "subscriptions.read",
+		"GET /api/v1/admin/instances":                    "instances.read",
+		"GET /api/v1/admin/instances/{instanceID}":       "instances.read",
+		"GET /api/v1/admin/tickets":                      "tickets.read",
+		"GET /api/v1/admin/tickets/{ticketID}":           "tickets.read",
+		"POST /api/v1/admin/tickets/{ticketID}/messages": "tickets.reply",
+		"POST /api/v1/admin/tickets/{ticketID}/close":    "tickets.manage",
+		"GET /api/v1/admin/audit":                        "audit.read",
+		"GET /api/v1/admin/admins":                       "admins.manage",
+		"GET /api/v1/admin/roles":                        "roles.manage",
+		"GET /api/v1/admin/settings":                     "settings.manage",
 	}
 
 	for route, requirement := range want {

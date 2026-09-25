@@ -637,6 +637,50 @@ paths:
         "200": {description: Result recorded}
         "401": {description: Unknown or revoked token}
         "404": {description: Command not found for this agent}
+  /metrics:
+    get:
+      operationId: metrics
+      responses:
+        "200":
+          description: Prometheus text exposition
+          content:
+            text/plain:
+              schema: {type: string}
+  /admin/auth/2fa/setup:
+    post:
+      operationId: adminTwoFactorSetup
+      responses:
+        "200": {description: Secret and otpauth URL}
+  /admin/auth/2fa/enable:
+    post:
+      operationId: adminTwoFactorEnable
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string}
+      responses:
+        "200": {description: Factor enabled}
+        "403": {description: Code did not verify}
+  /admin/auth/2fa/disable:
+    post:
+      operationId: adminTwoFactorDisable
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string}
+      responses:
+        "200": {description: Factor disabled}
+        "403": {description: Code did not verify}
   /admin/overview:
     get:
       operationId: adminOverview

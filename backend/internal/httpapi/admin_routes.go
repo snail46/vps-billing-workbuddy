@@ -57,6 +57,9 @@ func (ar *adminRoutes) mountOn(mux chi.Router) {
 	ar.public(mux, http.MethodPost, "/auth/login", ar.api.loginAdmin)
 	ar.authenticated(mux, http.MethodPost, "/auth/logout", ar.api.logoutAdmin)
 	ar.authenticated(mux, http.MethodGet, "/auth/me", ar.api.meAdmin)
+	ar.authenticated(mux, http.MethodPost, "/auth/2fa/setup", ar.api.adminTwoFactorSetup)
+	ar.authenticated(mux, http.MethodPost, "/auth/2fa/enable", ar.api.adminTwoFactorEnable)
+	ar.authenticated(mux, http.MethodPost, "/auth/2fa/disable", ar.api.adminTwoFactorDisable)
 
 	// Terminating a customer's subscription is the platform's hand, not a
 	// session's own business: it needs the permission the seed gives, and the

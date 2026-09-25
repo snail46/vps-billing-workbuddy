@@ -57,11 +57,13 @@ type User struct {
 
 // Admin is the part of an admin record the service needs.
 type Admin struct {
-	ID           uuid.UUID
-	Email        string
-	PasswordHash string
-	Status       string
-	DisplayName  string
+	ID               uuid.UUID
+	Email            string
+	PasswordHash     string
+	Status           string
+	DisplayName      string
+	TwoFactorEnabled bool
+	TwoFactorSecret  string
 }
 
 // Account statuses, matching the CHECK constraints in 0002_identity.
@@ -290,6 +292,9 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (User, erro
 type LoginInput struct {
 	Email    string
 	Password string
+	// TOTPCode is the second factor an admin whose account enabled it must
+	// present. Ignored for accounts (and users) without the factor.
+	TOTPCode string
 	// ClientContext is what the audit entry records about where the attempt came
 	// from. It is supplied by the transport layer, which is the only layer that knows.
 	ClientContext audit.Context
@@ -391,6 +396,14 @@ func (s *Service) LoginAdmin(ctx context.Context, input LoginInput) (LoginResult
 	if admin.Status != StatusActive {
 		s.auditRefusal(ctx, admin.ID.String(), input.ClientContext)
 		return LoginResult{}, ErrAccountSuspended
+	}
+	// The second factor (ADR-015 §1): once enabled, a correct password is
+	// only half the credential, and a refusal is audited like one.
+	if admin.TwoFactorEnabled {
+		if !VerifyTOTP(admin.TwoFactorSecret, input.TOTPCode, s.now()) {
+			s.auditRefusal(ctx, admin.ID.String(), input.ClientContext)
+			return LoginResult{}, ErrInvalidCredentials
+		}
 	}
 
 	if verification.NeedsRehash {

@@ -21,6 +21,7 @@ type Admin struct {
 	LastLoginAt      pgtype.Timestamptz `json:"last_login_at"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	TwoFactorSecret  pgtype.Text        `json:"two_factor_secret"`
 }
 
 type AdminRole struct {

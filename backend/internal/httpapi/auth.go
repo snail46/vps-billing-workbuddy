@@ -33,10 +33,12 @@ type registerRequest struct {
 	Timezone string `json:"timezone"`
 }
 
-// loginRequest is the body of a sign-in.
+// loginRequest is the body of a sign-in. totp_code is what an administrator
+// whose account enabled the second factor must present (ADR-015 §1).
 type loginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	TOTPCode string `json:"totp_code"`
 }
 
 // userPayload is a user as the API exposes it.
@@ -187,6 +189,7 @@ func (a *api) loginAdmin(w http.ResponseWriter, r *http.Request) {
 	result, err := a.auth.Service.LoginAdmin(r.Context(), identity.LoginInput{
 		Email:         body.Email,
 		Password:      body.Password,
+		TOTPCode:      body.TOTPCode,
 		ClientContext: auditContext(r),
 	})
 	if err != nil {

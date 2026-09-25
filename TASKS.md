@@ -341,10 +341,23 @@
 > 观测修正、超时 create 被收养（含通知行）、静默 agent 被计数。
 
 ## Phase 12 — Release Hardening
-- [ ] security
-- [ ] admin 2FA
-- [ ] backup/restore
-- [ ] metrics/alerts
-- [ ] performance
-- [ ] upgrade/rollback
-- [ ] acceptance suite
+- [x] security
+- [x] admin 2FA
+- [x] backup/restore
+- [x] metrics/alerts
+- [x] performance
+- [x] upgrade/rollback
+- [x] acceptance suite
+
+> **状态：实现完成，本地全量验证通过；CI 待复验。**
+>
+> **ADR-015**：2FA 是真 TOTP（RFC 6238，stdlib HMAC——零依赖），
+> 在登录路径强制执行：setup 铸造 secret 但 flag 不动，enable 验一个码
+> 才翻转，启用后 LoginAdmin 拒绝无码/错码的登录并记审计。指标是
+> `/metrics` 上的 Prometheus 文本、按需实时查询（操作按状态、实例按
+> observed、连接池、无聚合缓存可陈旧）。备份/恢复 = 一事一脚本
+> （scripts/backup.sh、restore.sh，逻辑备份）；升级 = 迁移历史
+> （CI 已证明每个版本可逆），runbook 在 ADR-015；性能 = 索引与限页
+> 在 Gate 断言，负载测试如实标注「V1 未测量」。验收 = scripts/
+> acceptance.sh：跑全部本地证明并打印 docs/19 清单与证据指针。
+> 迁移 0012：admins.two_factor_secret（0010/0011/0012 使表数达 23）。

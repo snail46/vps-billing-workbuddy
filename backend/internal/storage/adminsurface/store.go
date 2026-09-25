@@ -141,3 +141,28 @@ func (s *Store) WithinTransaction(ctx context.Context, fn func(*Store) error) er
 	}
 	return tx.Commit(ctx)
 }
+
+// SetAdminTwoFactor writes the secret and the flag in one update — the pair
+// is one fact about the account (ADR-015 §1).
+func (s *Store) SetAdminTwoFactor(ctx context.Context, adminID uuid.UUID, secret string, enabled bool, at time.Time) error {
+	tag, err := s.queries.SetAdminTwoFactor(ctx, sqlcgen.SetAdminTwoFactorParams{
+		ID:               adminID,
+		TwoFactorSecret:  pgTextOrNull(secret),
+		TwoFactorEnabled: enabled,
+		UpdatedAt:        pgTSTZ(at),
+	})
+	if err != nil {
+		return fmt.Errorf("adminsurface: set two factor: %w", err)
+	}
+	if tag != 1 {
+		return fmt.Errorf("adminsurface: no admin %s", adminID)
+	}
+	return nil
+}
+
+func pgTextOrNull(value string) pgtype.Text {
+	if value == "" {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: value, Valid: true}
+}

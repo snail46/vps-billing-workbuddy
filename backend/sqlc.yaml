@@ -26,6 +26,7 @@ sql:
       - "migrations/0009_user_surface.up.sql"
       - "migrations/0010_admin_surface.up.sql"
       - "migrations/0011_runman.up.sql"
+      - "migrations/0012_release_hardening.up.sql"
     queries: "internal/db/queries"
     gen:
       go:

@@ -13,13 +13,41 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const adminTwoFactorByAdmin = `-- name: AdminTwoFactorByAdmin :one
+SELECT id, two_factor_secret, two_factor_enabled FROM admins WHERE id = $1
+`
+
+type AdminTwoFactorByAdminRow struct {
+	ID               uuid.UUID   `json:"id"`
+	TwoFactorSecret  pgtype.Text `json:"two_factor_secret"`
+	TwoFactorEnabled bool        `json:"two_factor_enabled"`
+}
+
+func (q *Queries) AdminTwoFactorByAdmin(ctx context.Context, id uuid.UUID) (AdminTwoFactorByAdminRow, error) {
+	row := q.db.QueryRow(ctx, adminTwoFactorByAdmin, id)
+	var i AdminTwoFactorByAdminRow
+	err := row.Scan(&i.ID, &i.TwoFactorSecret, &i.TwoFactorEnabled)
+	return i, err
+}
+
+const adminTwoFactorEmail = `-- name: AdminTwoFactorEmail :one
+SELECT email FROM admins WHERE id = $1
+`
+
+func (q *Queries) AdminTwoFactorEmail(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, adminTwoFactorEmail, id)
+	var email string
+	err := row.Scan(&email)
+	return email, err
+}
+
 const createAdmin = `-- name: CreateAdmin :one
 INSERT INTO admins (
   id, email, password_hash, status, display_name
 ) VALUES (
   $1, $2, $3, $4, $5
 )
-RETURNING id, email, password_hash, status, display_name, two_factor_enabled, last_login_at, created_at, updated_at
+RETURNING id, email, password_hash, status, display_name, two_factor_enabled, last_login_at, created_at, updated_at, two_factor_secret
 `
 
 type CreateAdminParams struct {
@@ -49,6 +77,7 @@ func (q *Queries) CreateAdmin(ctx context.Context, arg CreateAdminParams) (Admin
 		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TwoFactorSecret,
 	)
 	return i, err
 }
@@ -150,7 +179,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 }
 
 const getAdminByEmail = `-- name: GetAdminByEmail :one
-SELECT id, email, password_hash, status, display_name, two_factor_enabled, last_login_at, created_at, updated_at FROM admins WHERE email = $1
+SELECT id, email, password_hash, status, display_name, two_factor_enabled, last_login_at, created_at, updated_at, two_factor_secret FROM admins WHERE email = $1
 `
 
 func (q *Queries) GetAdminByEmail(ctx context.Context, email string) (Admin, error) {
@@ -166,12 +195,13 @@ func (q *Queries) GetAdminByEmail(ctx context.Context, email string) (Admin, err
 		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TwoFactorSecret,
 	)
 	return i, err
 }
 
 const getAdminByID = `-- name: GetAdminByID :one
-SELECT id, email, password_hash, status, display_name, two_factor_enabled, last_login_at, created_at, updated_at FROM admins WHERE id = $1
+SELECT id, email, password_hash, status, display_name, two_factor_enabled, last_login_at, created_at, updated_at, two_factor_secret FROM admins WHERE id = $1
 `
 
 func (q *Queries) GetAdminByID(ctx context.Context, id uuid.UUID) (Admin, error) {
@@ -187,6 +217,7 @@ func (q *Queries) GetAdminByID(ctx context.Context, id uuid.UUID) (Admin, error)
 		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TwoFactorSecret,
 	)
 	return i, err
 }
@@ -339,6 +370,34 @@ WHERE id = $1
 func (q *Queries) RecordUserLogin(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, recordUserLogin, id)
 	return err
+}
+
+const setAdminTwoFactor = `-- name: SetAdminTwoFactor :execrows
+UPDATE admins
+SET two_factor_secret = $2, two_factor_enabled = $3, updated_at = $4
+WHERE id = $1
+`
+
+type SetAdminTwoFactorParams struct {
+	ID               uuid.UUID          `json:"id"`
+	TwoFactorSecret  pgtype.Text        `json:"two_factor_secret"`
+	TwoFactorEnabled bool               `json:"two_factor_enabled"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+// The TOTP enrollment (ADR-015 §1): secret and flag move in one write, and
+// the enable path verifies a code before the flag flips.
+func (q *Queries) SetAdminTwoFactor(ctx context.Context, arg SetAdminTwoFactorParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setAdminTwoFactor,
+		arg.ID,
+		arg.TwoFactorSecret,
+		arg.TwoFactorEnabled,
+		arg.UpdatedAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateAdminPasswordHash = `-- name: UpdateAdminPasswordHash :exec

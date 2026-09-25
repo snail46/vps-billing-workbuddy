@@ -20,6 +20,7 @@ import (
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/health"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/httpapi"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/identity"
+	adminsurface "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/adminsurface"
 )
 
 // These tests exercise the authentication surface through the assembled router, so the
@@ -291,6 +292,12 @@ func newAuthFixture(t *testing.T) *authFixture {
 			// mount none of the routes the walk is supposed to see.
 			Commerce: &httpapi.CommerceDeps{
 				Service: &commerce.Service{},
+			},
+			// The operator's console mounts with a zero-value store: the walk
+			// reads routes, and the handlers' stores are never touched by a walk.
+			Admin: &httpapi.AdminDeps{
+				// nil pool: mounting reads no rows, and the walk never calls a handler.
+				Store: adminsurface.New(nil),
 			},
 		}),
 		store:   store,
@@ -757,5 +764,49 @@ func TestOrdinaryUserSignInsAreNotAudited(t *testing.T) {
 	// request log.
 	if len(f.store.audited) != 0 {
 		t.Errorf("a user sign-in was audited: %+v", f.store.audited)
+	}
+}
+
+// The second factor is enforced at the sign-in path, not displayed beside it
+// (ADR-015 §1): an enabled account refuses a password-only sign-in and
+// accepts the one the secret's authenticator would show.
+func TestAdminTwoFactorIsEnforcedAtSignIn(t *testing.T) {
+	f := newAuthFixture(t)
+
+	twoFAID := uuid.MustParse("0198f1c2-0000-7000-8000-0000000000c1")
+	hasher, err := identity.NewPasswordHasher(identity.PasswordParams{
+		Memory: 1024, Iterations: 1, Parallelism: 1, SaltLength: 16, KeyLength: 32,
+	})
+	if err != nil {
+		t.Fatalf("build hasher: %v", err)
+	}
+	hash, err := hasher.Hash(testPassword)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	secret, err := identity.GenerateTOTPSecret()
+	if err != nil {
+		t.Fatalf("generate secret: %v", err)
+	}
+	f.store.admins["totp@example.com"] = identity.Admin{
+		ID: twoFAID, Email: "totp@example.com", PasswordHash: hash,
+		Status: identity.StatusActive, DisplayName: "Totp",
+		TwoFactorEnabled: true, TwoFactorSecret: secret,
+	}
+	f.store.adminsByID[twoFAID] = f.store.admins["totp@example.com"]
+
+	// Password alone: refused.
+	rec := f.do(t, http.MethodPost, "/api/v1/admin/auth/login",
+		`{"email":"totp@example.com","password":"`+testPassword+`"}`)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("a password-only sign-in through an enabled factor: %d", rec.Code)
+	}
+
+	// Password plus the code the authenticator shows now: accepted.
+	code := identity.HOTPAt(secret, uint64(time.Now().UTC().Unix())/30)
+	rec = f.do(t, http.MethodPost, "/api/v1/admin/auth/login",
+		`{"email":"totp@example.com","password":"`+testPassword+`","totp_code":"`+code+`"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a correct second factor was refused: %d (%s)", rec.Code, rec.Body.String())
 	}
 }

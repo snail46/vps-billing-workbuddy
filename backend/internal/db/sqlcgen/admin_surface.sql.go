@@ -1362,3 +1362,62 @@ func (q *Queries) AdminWalletBalances(ctx context.Context) ([]AdminWalletBalance
 	}
 	return items, nil
 }
+
+const metricsInstancesByState = `-- name: MetricsInstancesByState :many
+SELECT observed_state, count(*) AS count FROM instances
+WHERE deleted_at IS NULL GROUP BY observed_state
+`
+
+type MetricsInstancesByStateRow struct {
+	ObservedState string `json:"observed_state"`
+	Count         int64  `json:"count"`
+}
+
+func (q *Queries) MetricsInstancesByState(ctx context.Context) ([]MetricsInstancesByStateRow, error) {
+	rows, err := q.db.Query(ctx, metricsInstancesByState)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MetricsInstancesByStateRow{}
+	for rows.Next() {
+		var i MetricsInstancesByStateRow
+		if err := rows.Scan(&i.ObservedState, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const metricsOperationsByStatus = `-- name: MetricsOperationsByStatus :many
+SELECT status, count(*) AS count FROM operations GROUP BY status
+`
+
+type MetricsOperationsByStatusRow struct {
+	Status string `json:"status"`
+	Count  int64  `json:"count"`
+}
+
+func (q *Queries) MetricsOperationsByStatus(ctx context.Context) ([]MetricsOperationsByStatusRow, error) {
+	rows, err := q.db.Query(ctx, metricsOperationsByStatus)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MetricsOperationsByStatusRow{}
+	for rows.Next() {
+		var i MetricsOperationsByStatusRow
+		if err := rows.Scan(&i.Status, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

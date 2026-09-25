@@ -152,6 +152,9 @@ func NewRouter(deps Deps) *Handler {
 		r.Get("/health/live", deps.Health.Live())
 		r.Get("/health/ready", deps.Health.Ready())
 	}
+	if deps.Admin != nil {
+		r.Get("/metrics", api.adminMetrics)
+	}
 
 	requirements := map[string]string{}
 
