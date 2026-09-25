@@ -590,6 +590,147 @@ paths:
         "403": {description: The administrator does not hold the permission}
         "404": {description: No such subscription}
         "409": {description: The subscription has already ended}
+  /admin/overview:
+    get:
+      operationId: adminOverview
+      responses:
+        "200": {description: Dashboard aggregates}
+  /admin/users:
+    get:
+      operationId: adminListUsers
+      responses:
+        "200": {description: Users}
+  /admin/users/{id}:
+    get:
+      operationId: adminGetUser
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": {description: User with wallets}
+        "404": {description: Not found}
+  /admin/users/{id}/suspend:
+    post:
+      operationId: adminSuspendUser
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": {description: Suspended}
+  /admin/users/{id}/activate:
+    post:
+      operationId: adminActivateUser
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": {description: Activated}
+  /admin/products:
+    get:
+      operationId: adminListProducts
+      responses:
+        "200": {description: Products with plans}
+  /admin/orders:
+    get:
+      operationId: adminListOrders
+      responses:
+        "200": {description: Orders}
+  /admin/orders/{id}:
+    get:
+      operationId: adminGetOrder
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": {description: Order with items and payments}
+        "404": {description: Not found}
+  /admin/payments:
+    get:
+      operationId: adminListPayments
+      responses:
+        "200": {description: Payments}
+  /admin/ledger:
+    get:
+      operationId: adminLedger
+      responses:
+        "200": {description: Ledger movements and wallet balances}
+  /admin/subscriptions:
+    get:
+      operationId: adminListSubscriptions
+      responses:
+        "200": {description: Subscriptions}
+  /admin/instances:
+    get:
+      operationId: adminListInstances
+      responses:
+        "200": {description: Instances}
+  /admin/instances/{id}:
+    get:
+      operationId: adminGetInstance
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": {description: Instance detail with joins}
+        "404": {description: Not found}
+  /admin/tickets:
+    get:
+      operationId: adminListTickets
+      responses:
+        "200": {description: Tickets}
+  /admin/tickets/{id}:
+    get:
+      operationId: adminGetTicket
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": {description: Ticket with messages}
+        "404": {description: Not found}
+  /admin/tickets/{id}/messages:
+    post:
+      operationId: adminReplyTicket
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: {type: string}
+      responses:
+        "201": {description: Message appended}
+        "404": {description: Not found}
+  /admin/tickets/{id}/close:
+    post:
+      operationId: adminCloseTicket
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": {description: Ticket closed}
+        "404": {description: Not found}
+  /admin/audit:
+    get:
+      operationId: adminListAudit
+      responses:
+        "200": {description: Recent audit events}
+  /admin/admins:
+    get:
+      operationId: adminListAdmins
+      responses:
+        "200": {description: Administrators with roles}
+  /admin/roles:
+    get:
+      operationId: adminListRoles
+      responses:
+        "200": {description: Roles with permissions}
+  /admin/settings:
+    get:
+      operationId: adminListSettings
+      responses:
+        "200": {description: System settings}
+  /admin/operations:
+    get:
+      operationId: adminListOperations
+      responses:
+        "200": {description: Operations}
   /admin/operations/{id}:
     get:
       operationId: getOperation

@@ -3,8 +3,10 @@ import { ApiClient, bootstrapI18n } from "@vps/shared";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
+import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./app.js";
+import { AdminSessionProvider } from "./session.js";
 import { API_BASE_URL } from "./config.js";
 import "./styles.css";
 
@@ -36,7 +38,11 @@ createRoot(container).render(
   <StrictMode>
     <I18nextProvider i18n={i18n}>
       <QueryClientProvider client={queryClient}>
-        <App apiClient={apiClient} />
+        <AdminSessionProvider apiClient={apiClient}>
+          <BrowserRouter>
+            <App apiClient={apiClient} />
+          </BrowserRouter>
+        </AdminSessionProvider>
       </QueryClientProvider>
     </I18nextProvider>
   </StrictMode>,

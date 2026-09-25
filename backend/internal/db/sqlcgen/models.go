@@ -385,6 +385,14 @@ type Subscription struct {
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 }
 
+type SystemSetting struct {
+	Key         string             `json:"key"`
+	Value       string             `json:"value"`
+	Description pgtype.Text        `json:"description"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	UpdatedBy   *uuid.UUID         `json:"updated_by"`
+}
+
 type Ticket struct {
 	ID        uuid.UUID          `json:"id"`
 	TicketNo  string             `json:"ticket_no"`

@@ -26,6 +26,7 @@ import (
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/logging"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/payment/fakegateway"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/redisx"
+	adminsurface "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/adminsurface"
 	commercestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/commerce"
 	identitystore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/identity"
 	instancestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/instance"
@@ -168,6 +169,9 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Store:      usersurface.New(pool),
 			Operations: operationstore.New(pool),
 			Instances:  instancestore.New(pool),
+		},
+		Admin: &httpapi.AdminDeps{
+			Store: adminsurface.New(pool),
 		},
 		Auth: &httpapi.Auth{
 			Service:  identityService,

@@ -73,6 +73,41 @@ func (ar *adminRoutes) mountOn(mux chi.Router) {
 	// The operation system's readers: the record and its stream.
 	ar.guarded(mux, http.MethodGet, "/operations/{operationID}", "operations.read", ar.api.getOperation)
 	ar.guarded(mux, http.MethodGet, "/operations/events", "operations.read", ar.api.streamEvents)
+
+	// The operator's console (ADR-012). Each screen names its permission where
+	// the route lives; a screen that cannot be granted cannot be reached.
+	if ar.api.admin != nil {
+		ar.guarded(mux, http.MethodGet, "/overview", "operations.read", ar.api.adminOverview)
+		ar.guarded(mux, http.MethodGet, "/operations", "operations.read", ar.api.adminListOperations)
+
+		ar.guarded(mux, http.MethodGet, "/users", "users.read", ar.api.adminListUsers)
+		ar.guarded(mux, http.MethodGet, "/users/{userID}", "users.read", ar.api.adminGetUser)
+		ar.guarded(mux, http.MethodPost, "/users/{userID}/suspend", "users.suspend", ar.api.adminSetUserStatus("suspended"))
+		ar.guarded(mux, http.MethodPost, "/users/{userID}/activate", "users.suspend", ar.api.adminSetUserStatus("active"))
+
+		ar.guarded(mux, http.MethodGet, "/products", "products.read", ar.api.adminListProducts)
+
+		ar.guarded(mux, http.MethodGet, "/orders", "orders.read", ar.api.adminListOrders)
+		ar.guarded(mux, http.MethodGet, "/orders/{orderID}", "orders.read", ar.api.adminGetOrder)
+		ar.guarded(mux, http.MethodGet, "/payments", "payments.read", ar.api.adminListPayments)
+		ar.guarded(mux, http.MethodGet, "/ledger", "ledger.read", ar.api.adminLedger)
+
+		ar.guarded(mux, http.MethodGet, "/subscriptions", "subscriptions.read", ar.api.adminListSubscriptions)
+
+		ar.guarded(mux, http.MethodGet, "/instances", "instances.read", ar.api.adminListInstances)
+		ar.guarded(mux, http.MethodGet, "/instances/{instanceID}", "instances.read", ar.api.adminGetInstance)
+
+		ar.guarded(mux, http.MethodGet, "/tickets", "tickets.read", ar.api.adminListTickets)
+		ar.guarded(mux, http.MethodGet, "/tickets/{ticketID}", "tickets.read", ar.api.adminGetTicket)
+		ar.guarded(mux, http.MethodPost, "/tickets/{ticketID}/messages", "tickets.reply", ar.api.adminReplyTicket)
+		ar.guarded(mux, http.MethodPost, "/tickets/{ticketID}/close", "tickets.manage", ar.api.adminCloseTicket)
+
+		ar.guarded(mux, http.MethodGet, "/audit", "audit.read", ar.api.adminListAudit)
+
+		ar.guarded(mux, http.MethodGet, "/admins", "admins.manage", ar.api.adminListAdmins)
+		ar.guarded(mux, http.MethodGet, "/roles", "roles.manage", ar.api.adminListRoles)
+		ar.guarded(mux, http.MethodGet, "/settings", "settings.manage", ar.api.adminListSettings)
+	}
 }
 
 // public registers an endpoint reachable without a session.

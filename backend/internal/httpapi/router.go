@@ -62,6 +62,9 @@ type Deps struct {
 	// User is the customer's own surface: detail, actions, wallet, invoices,
 	// notifications, tickets (ADR-011).
 	User *UserDeps
+	// Admin is the operator's console (ADR-012), beside the Auth surface the
+	// admin routes already mount.
+	Admin *AdminDeps
 }
 
 // Handler is the assembled HTTP surface.
@@ -134,7 +137,7 @@ func NewRouter(deps Deps) *Handler {
 	}))
 	r.Use(bmw.CORS(deps.Config.AllowedOrigins()))
 
-	api := &api{logger: logger, auth: deps.Auth, commerce: deps.Commerce, infra: deps.Infra, operations: &OperationsDeps{Store: deps.Operations}, instances: deps.Instances, user: deps.User}
+	api := &api{logger: logger, auth: deps.Auth, commerce: deps.Commerce, infra: deps.Infra, operations: &OperationsDeps{Store: deps.Operations}, instances: deps.Instances, user: deps.User, admin: deps.Admin}
 
 	// Router-level handlers cover paths that match no route at all, so the
 	// envelope holds even for a malformed URL.
@@ -251,6 +254,7 @@ type api struct {
 	operations *OperationsDeps
 	instances  *InstanceDeps
 	user       *UserDeps
+	admin      *AdminDeps
 }
 
 // mountUser installs the customer's own surface (ADR-011). Reads are

@@ -1,34 +1,58 @@
-import { LocaleSwitcher, type ApiClient } from "@vps/shared";
+import type { ApiClient } from "@vps/shared";
 import type { ReactNode } from "react";
-import { useTranslation } from "react-i18next";
+import { Navigate, Route, Routes } from "react-router-dom";
 
-import { PlatformStatus } from "./platform-status.js";
+import { Layout, LoginScreen } from "./layout.js";
+import { DashboardPage, OperationsPage, TicketsPage, UsersPage } from "./pages/core.js";
+import {
+  AdminAuditPage,
+  AdminInstanceDetailPage,
+  AdminInstancesPage,
+  AdminOrderDetailPage,
+  AdminsPage,
+  LedgerPage,
+  OrdersPage,
+  PaymentsPage,
+  ProductsPage,
+  RolesPage,
+  SettingsPage,
+  SubscriptionsPage,
+} from "./pages/lists.js";
+import { useAdminSession } from "./session-context.js";
 
-/**
- * Application shell.
- *
- * Phase 0 ships a shell rather than admin screens: TASKS.md scopes the
- * foundation to the application skeleton plus the shared layer, and the health
- * dashboard, user, product and ledger screens belong to Phase 9.
- *
- * The layout is denser than the user client's, which docs/11 permits and
- * expects for the operations surface.
- */
 export function App({ apiClient }: { apiClient: ApiClient }): ReactNode {
-  const { t } = useTranslation();
+  const { session, resolving } = useAdminSession();
+
+  if (resolving) {
+    return null;
+  }
+
+  const guarded = (node: ReactNode): ReactNode =>
+    session === null ? <Navigate to="/login" replace /> : node;
 
   return (
-    <div className="min-h-full">
-      <header className="border-b border-border-subtle bg-surface">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-2">
-          <span className="text-sm font-semibold text-content">{t("app.adminName")}</span>
-          <LocaleSwitcher />
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-4">
-        <PlatformStatus apiClient={apiClient} />
-      </main>
-    </div>
+    <Routes>
+      <Route element={<Layout />}>
+        <Route path="/login" element={session === null ? <LoginScreen /> : <Navigate to="/" replace />} />
+        <Route index element={guarded(<DashboardPage apiClient={apiClient} />)} />
+        <Route path="/users" element={guarded(<UsersPage apiClient={apiClient} />)} />
+        <Route path="/products" element={guarded(<ProductsPage apiClient={apiClient} />)} />
+        <Route path="/orders" element={guarded(<OrdersPage apiClient={apiClient} />)} />
+        <Route path="/orders/:orderID" element={guarded(<AdminOrderDetailPage apiClient={apiClient} />)} />
+        <Route path="/payments" element={guarded(<PaymentsPage apiClient={apiClient} />)} />
+        <Route path="/ledger" element={guarded(<LedgerPage apiClient={apiClient} />)} />
+        <Route path="/subscriptions" element={guarded(<SubscriptionsPage apiClient={apiClient} />)} />
+        <Route path="/instances" element={guarded(<AdminInstancesPage apiClient={apiClient} />)} />
+        <Route path="/instances/:instanceID" element={guarded(<AdminInstanceDetailPage apiClient={apiClient} />)} />
+        <Route path="/operations" element={guarded(<OperationsPage apiClient={apiClient} />)} />
+        <Route path="/tickets" element={guarded(<TicketsPage apiClient={apiClient} />)} />
+        <Route path="/tickets/:ticketID" element={guarded(<TicketsPage apiClient={apiClient} />)} />
+        <Route path="/audit" element={guarded(<AdminAuditPage apiClient={apiClient} />)} />
+        <Route path="/admins" element={guarded(<AdminsPage apiClient={apiClient} />)} />
+        <Route path="/roles" element={guarded(<RolesPage apiClient={apiClient} />)} />
+        <Route path="/settings" element={guarded(<SettingsPage apiClient={apiClient} />)} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
   );
 }

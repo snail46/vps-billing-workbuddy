@@ -274,11 +274,25 @@
 > Instances/Operations 依赖，`GET /instances` 在生产形态会 nil-panic。
 
 ## Phase 9 — Admin Web
-- [ ] health dashboard
-- [ ] users/products/orders/payments/ledger
-- [ ] subscriptions/instances/nodes/providers
-- [ ] operations/tickets/audit
-- [ ] admins/roles/settings
+- [x] health dashboard
+- [x] users/products/orders/payments/ledger
+- [x] subscriptions/instances/nodes/providers
+- [x] operations/tickets/audit
+- [x] admins/roles/settings
+
+> **状态：实现完成，本地全量验证通过；CI 待复验。**
+>
+> **ADR-012**：每个屏一个权限，路由挂载处显式声明；补种 docs/15 词汇缺口
+> `orders.read` / `products.read`（迁移 0010，Gate 权限计数 29→31）。
+> 总览 = 计算而非收集：失败/进行中操作、离线节点、容量预警、停用用户、
+> 收款合计——全部读当前行，无缓存可陈旧。管理实例详情 = 记录联查
+> （user/subscription/plan/node/provider/network/traffic/operations/audit），
+> 与用户面同一 join 形状换一道门。写保持最小且有权限：用户停用/启用
+> （users.suspend）、工单回复/关闭（tickets.reply/manage，消息+状态戳同事务）；
+> 退款/调账/操作重试不做半吊子——如实缺席。settings/roles V1 只读
+> （system_settings 表由 0010 补齐——又一处 schema.sql 与迁移脱节的表）。
+> admin-web：react-router SPA，总览先行，13 个屏 + 双语 + 六状态，
+> useQuery/useMutation 包装默认 ApiError。
 
 ## Phase 10 — Runman Provider
 - [ ] Gateway

@@ -24,6 +24,7 @@ sql:
       - "migrations/0007_operations.up.sql"
       - "migrations/0008_instances.up.sql"
       - "migrations/0009_user_surface.up.sql"
+      - "migrations/0010_admin_surface.up.sql"
     queries: "internal/db/queries"
     gen:
       go:
