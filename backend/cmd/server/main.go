@@ -16,8 +16,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/go-chi/chi/v5"
-
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/authmw"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/commerce"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/config"
@@ -176,6 +174,10 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		Admin: &httpapi.AdminDeps{
 			Store: adminsurface.New(pool),
 		},
+		// The runman gateway (ADR-013): the agent surface hangs off the
+		// product base path and is authenticated by node tokens, so the
+		// router mounts it beside the session-gated surfaces.
+		Runman: runman.New(pool),
 		Auth: &httpapi.Auth{
 			Service:  identityService,
 			Sessions: sessions,
@@ -204,12 +206,6 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			Logger: logger,
 		}),
 	})
-
-	// The runman gateway (ADR-013): the agent surface is public in chi's
-	// sense and authenticated by node tokens. It hangs off the product base
-	// path so the agent's requests share the API's routing and logging.
-	runmanStore := runman.New(pool)
-	runman.Mount(router.Route("/api/v1", func(_ chi.Router) {}), runmanStore)
 
 	srv := &http.Server{
 		Addr:    cfg.HTTPAddr,

@@ -22,6 +22,7 @@ import (
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/httpx"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/identity"
 	bmw "github.com/snail46/vps-billing-workbuddy/backend/internal/middleware"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/runman"
 	operationstore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/operation"
 )
 
@@ -65,6 +66,9 @@ type Deps struct {
 	// Admin is the operator's console (ADR-012), beside the Auth surface the
 	// admin routes already mount.
 	Admin *AdminDeps
+	// Runman is the agent gateway's registry and queue (ADR-013). Its surface
+	// is token-authenticated, not session-gated, and mounts beside the rest.
+	Runman *runman.Store
 }
 
 // Handler is the assembled HTTP surface.
@@ -165,6 +169,9 @@ func NewRouter(deps Deps) *Handler {
 		}
 		if deps.User != nil {
 			mountUser(v1, api)
+		}
+		if deps.Runman != nil {
+			runman.Mount(v1, deps.Runman)
 		}
 	})
 

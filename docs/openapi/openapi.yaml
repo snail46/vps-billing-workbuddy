@@ -590,6 +590,53 @@ paths:
         "403": {description: The administrator does not hold the permission}
         "404": {description: No such subscription}
         "409": {description: The subscription has already ended}
+  /runman/auth:
+    post:
+      operationId: runmanAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: {type: string}
+      responses:
+        "200": {description: Agent identity}
+        "401": {description: Unknown or revoked token}
+  /runman/heartbeat:
+    post:
+      operationId: runmanHeartbeat
+      responses:
+        "200": {description: Heartbeat accepted with pending count}
+        "401": {description: Unknown or revoked token}
+  /runman/commands:
+    get:
+      operationId: runmanClaimCommands
+      responses:
+        "200": {description: Claimed commands}
+        "401": {description: Unknown or revoked token}
+  /runman/commands/{id}/result:
+    post:
+      operationId: runmanCommandResult
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: {type: string, enum: [succeeded, failed]}
+                result: {type: object}
+                error_code: {type: string}
+      responses:
+        "200": {description: Result recorded}
+        "401": {description: Unknown or revoked token}
+        "404": {description: Command not found for this agent}
   /admin/overview:
     get:
       operationId: adminOverview
