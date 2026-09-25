@@ -28,6 +28,9 @@ import (
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/redisx"
 	commercestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/commerce"
 	identitystore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/identity"
+	instancestore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/instance"
+	operationstore "github.com/snail46/vps-billing-workbuddy/backend/internal/storage/operation"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/storage/usersurface"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/version"
 )
 
@@ -156,6 +159,16 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	router := httpapi.NewRouter(httpapi.Deps{
 		Config: cfg,
 		Logger: logger,
+		// The customer's instance surface and their own surface (ADR-011): the
+		// reads are store-backed, the actions write queued operations the
+		// worker's registered runners execute.
+		Instances:  &httpapi.InstanceDeps{Store: instancestore.New(pool)},
+		Operations: operationstore.New(pool),
+		User: &httpapi.UserDeps{
+			Store:      usersurface.New(pool),
+			Operations: operationstore.New(pool),
+			Instances:  instancestore.New(pool),
+		},
 		Auth: &httpapi.Auth{
 			Service:  identityService,
 			Sessions: sessions,

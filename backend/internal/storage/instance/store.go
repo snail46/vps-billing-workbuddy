@@ -99,6 +99,36 @@ func (s *Store) BySubscription(ctx context.Context, subscriptionID uuid.UUID) (I
 	return fromRow(row), true, nil
 }
 
+// ByID reads one instance by its platform identifier. The action paths and the
+// instance workflows read this way; ownership is resolved by the caller —
+// either the SQL join of the user surface or the workflow's own record.
+func (s *Store) ByID(ctx context.Context, id uuid.UUID) (Instance, bool, error) {
+	row, err := s.queries.InstanceByID(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Instance{}, false, nil
+	}
+	if err != nil {
+		return Instance{}, false, fmt.Errorf("instancestore: read by id: %w", err)
+	}
+	return fromRow(row), true, nil
+}
+
+// SetImage records the image a reinstall put on the machine.
+func (s *Store) SetImage(ctx context.Context, id uuid.UUID, image string, at time.Time) error {
+	tag, err := s.queries.SetInstanceImage(ctx, sqlcgen.SetInstanceImageParams{
+		ID:        id,
+		ImageID:   pgtype.Text{String: image, Valid: true},
+		UpdatedAt: pgtype.Timestamptz{Time: at, Valid: true},
+	})
+	if err != nil {
+		return fmt.Errorf("instancestore: set image: %w", err)
+	}
+	if tag != 1 {
+		return fmt.Errorf("instancestore: the instance %s vanished mid-update", id)
+	}
+	return nil
+}
+
 // ForUser reads a customer's live instances, newest first.
 func (s *Store) ForUser(ctx context.Context, userID uuid.UUID) ([]Instance, error) {
 	rows, err := s.queries.InstancesForUser(ctx, userID)

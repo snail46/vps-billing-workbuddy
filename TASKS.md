@@ -246,13 +246,31 @@
 > proxy devices = 端口转发面；`instance_networks` 行与网络两步在 Phase 8+ 激活。
 
 ## Phase 8 — User Web
-- [ ] dashboard/catalog/checkout
-- [ ] instances/detail/network/traffic
-- [ ] operation progress
-- [ ] orders/invoices/wallet
-- [ ] notifications/tickets/account
-- [ ] all page states
-- [ ] bilingual
+- [x] dashboard/catalog/checkout
+- [x] instances/detail/network/traffic
+- [x] operation progress
+- [x] orders/invoices/wallet
+- [x] notifications/tickets/account
+- [x] all page states
+- [x] bilingual
+
+> **状态：实现完成，本地全量验证通过；CI 待复验。**
+>
+> **ADR-011**：所有权是 SQL 里的 join，不是 handler 里的二次检查——
+> 实例详情/钱包/账单/通知/工单的每条读都经所有权链（instance→subscription→user），
+> 拿不到即 404，"不存在"与"不是你的"不可区分。实例动作（restart/reinstall）
+> 走操作引擎：HTTP 只验所有权与状态、查开放操作守卫，然后 202 + operation_id，
+> worker 里注册的 runner 执行；重装镜像随幂等键传递（输入随重试存活）。
+> 用户事件流 = 运营流同一台机器换一道门（404 而非 403，不泄露存在性）；
+> `/instances/{id}` 详情带 `open_operation`，刷新后进度从记录重新推导。
+> 迁移 0009 补齐参考 schema 中一直存在、此前未被迁移承载的四张表
+> （instance_networks / port_forwards / traffic_usage / tickets+ticket_messages）。
+> 钱包页 = 投影（余额）+ 真相（ledger movements）。Gate 断言：表 22、约束 13、索引 11。
+> 前端：react-router SPA（登录/注册/概览/目录/结算/实例四标签/订单/账单/钱包/
+> 消息/工单/账号），双语文案成对进 shared locale（parity 测试守门），
+> 六种页面状态用 shared states 组件，操作进度复用 shared OperationProgress
+> （SSE 流 + 轮询兜底）。修复了一个潜在缺陷：server main 此前未装配
+> Instances/Operations 依赖，`GET /instances` 在生产形态会 nil-panic。
 
 ## Phase 9 — Admin Web
 - [ ] health dashboard

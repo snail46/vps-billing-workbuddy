@@ -434,11 +434,11 @@ jobs:
             exit 1
           fi
 
-          commerce_query="SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('node_groups','products','plans','orders','order_items','payments','wallets','ledger_transactions','ledger_entries','outbox_events','subscriptions','invoices','invoice_items','providers','nodes','instances','notifications');"
+          commerce_query="SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('node_groups','products','plans','orders','order_items','payments','wallets','ledger_transactions','ledger_entries','outbox_events','subscriptions','invoices','invoice_items','providers','nodes','instances','notifications','instance_networks','port_forwards','traffic_usage','tickets','ticket_messages');"
           commerce="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c "$commerce_query" | tr -d '\r')"
           echo "commerce tables=${commerce}"
-          if [ "${commerce}" != "17" ]; then
-            echo "::error::expected 17 tables through the vertical slice; got ${commerce}"
+          if [ "${commerce}" != "22" ]; then
+            echo "::error::expected 22 tables through the user surface; got ${commerce}"
             exit 1
           fi
 
@@ -449,17 +449,17 @@ jobs:
           # ledger reference index is the structural half of the idempotency decision
           # (ADR-005), so if it silently failed to create, the Gate's own duplicate
           # delivery check would be the only thing left holding it.
-          constraints="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c "SELECT count(*) FROM pg_constraint WHERE conname IN ('users_email_normalized','admins_email_normalized','ledger_entries_direction_known','ledger_entries_account_type_known','invoices_has_an_origin','orders_total_is_subtotal_less_discount','nodes_status_known');" | tr -d '\r')"
+          constraints="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c "SELECT count(*) FROM pg_constraint WHERE conname IN ('users_email_normalized','admins_email_normalized','ledger_entries_direction_known','ledger_entries_account_type_known','invoices_has_an_origin','orders_total_is_subtotal_less_discount','nodes_status_known','instance_networks_type_known','port_forwards_protocol_known','traffic_usage_period_ordered','tickets_status_known','tickets_priority_known','ticket_messages_sender_known');" | tr -d '\r')"
           echo "named constraints=${constraints}"
-          if [ "${constraints}" != "7" ]; then
-            echo "::error::expected 7 named constraints; got ${constraints}"
+          if [ "${constraints}" != "13" ]; then
+            echo "::error::expected 13 named constraints; got ${constraints}"
             exit 1
           fi
 
-          index_count="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c "SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('ux_payments_gateway_external','ux_ledger_transactions_reference','ix_outbox_events_pending','ix_subscriptions_sweep','ux_invoices_open_renewal','ix_nodes_group_status','ux_instance_provider_id');" | tr -d '\r')"
+          index_count="$($compose exec -T postgres psql -tA -U vps_billing -d vps_billing -c "SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('ux_payments_gateway_external','ux_ledger_transactions_reference','ix_outbox_events_pending','ix_subscriptions_sweep','ux_invoices_open_renewal','ix_nodes_group_status','ux_instance_provider_id','ux_port_forward','ux_traffic_period','ix_tickets_user','ix_ticket_messages_ticket');" | tr -d '\r')"
           echo "named indexes=${index_count}"
-          if [ "${index_count}" != "7" ]; then
-            echo "::error::expected 7 named indexes; got ${index_count}"
+          if [ "${index_count}" != "11" ]; then
+            echo "::error::expected 11 named indexes; got ${index_count}"
             exit 1
           fi
 

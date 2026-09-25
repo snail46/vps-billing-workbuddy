@@ -86,6 +86,40 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 	return err
 }
 
+const instanceByID = `-- name: InstanceByID :one
+SELECT id, subscription_id, node_id, provider_id, provider_instance_id, name, desired_state, observed_state, cpu_cores, memory_mb, disk_gb, traffic_limit_gb, bandwidth_mbps, image_id, primary_ipv4, primary_ipv6, last_synced_at, version, created_at, updated_at, deleted_at FROM instances WHERE id = $1 AND deleted_at IS NULL
+`
+
+// The action paths read the machine they act on; the runner too.
+func (q *Queries) InstanceByID(ctx context.Context, id uuid.UUID) (Instance, error) {
+	row := q.db.QueryRow(ctx, instanceByID, id)
+	var i Instance
+	err := row.Scan(
+		&i.ID,
+		&i.SubscriptionID,
+		&i.NodeID,
+		&i.ProviderID,
+		&i.ProviderInstanceID,
+		&i.Name,
+		&i.DesiredState,
+		&i.ObservedState,
+		&i.CpuCores,
+		&i.MemoryMb,
+		&i.DiskGb,
+		&i.TrafficLimitGb,
+		&i.BandwidthMbps,
+		&i.ImageID,
+		&i.PrimaryIpv4,
+		&i.PrimaryIpv6,
+		&i.LastSyncedAt,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const instanceBySubscription = `-- name: InstanceBySubscription :one
 SELECT id, subscription_id, node_id, provider_id, provider_instance_id, name, desired_state, observed_state, cpu_cores, memory_mb, disk_gb, traffic_limit_gb, bandwidth_mbps, image_id, primary_ipv4, primary_ipv6, last_synced_at, version, created_at, updated_at, deleted_at FROM instances WHERE subscription_id = $1
 `
@@ -122,7 +156,8 @@ func (q *Queries) InstanceBySubscription(ctx context.Context, subscriptionID uui
 }
 
 const instancesForUser = `-- name: InstancesForUser :many
-SELECT i.id, i.subscription_id, i.node_id, i.provider_id, i.provider_instance_id, i.name, i.desired_state, i.observed_state, i.cpu_cores, i.memory_mb, i.disk_gb, i.traffic_limit_gb, i.bandwidth_mbps, i.image_id, i.primary_ipv4, i.primary_ipv6, i.last_synced_at, i.version, i.created_at, i.updated_at, i.deleted_at FROM instances i
+SELECT i.id, i.subscription_id, i.node_id, i.provider_id, i.provider_instance_id, i.name, i.desired_state, i.observed_state, i.cpu_cores, i.memory_mb, i.disk_gb, i.traffic_limit_gb, i.bandwidth_mbps, i.image_id, i.primary_ipv4, i.primary_ipv6, i.last_synced_at, i.version, i.created_at, i.updated_at, i.deleted_at
+FROM instances i
 JOIN subscriptions s ON s.id = i.subscription_id
 WHERE s.user_id = $1 AND i.deleted_at IS NULL
 ORDER BY i.created_at DESC

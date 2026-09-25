@@ -25,6 +25,7 @@ import (
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/config"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/db"
 	sqlcgen "github.com/snail46/vps-billing-workbuddy/backend/internal/db/sqlcgen"
+	"github.com/snail46/vps-billing-workbuddy/backend/internal/instanceop"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/logging"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/operation"
 	"github.com/snail46/vps-billing-workbuddy/backend/internal/outbox"
@@ -131,6 +132,20 @@ func runWorker(ctx context.Context, cfg config.Config, logger *slog.Logger) erro
 	})
 	if err := engine.Register(provision.OperationType, provisionRunner); err != nil {
 		return fmt.Errorf("register the provision runner: %w", err)
+	}
+	// The customer's own instance workflows (ADR-011 §2): restart and
+	// reinstall, accepted as operations by the server and executed here.
+	instanceRunner := instanceop.NewRunner(instanceop.Deps{
+		Instances: instancestore.New(pool),
+		Nodes:     infraStore,
+		Providers: map[string]provider.Provider{gateway.Name(): gateway},
+		Logger:    logger,
+	})
+	if err := engine.Register(instanceop.OperationTypeRestart, instanceRunner); err != nil {
+		return fmt.Errorf("register the restart runner: %w", err)
+	}
+	if err := engine.Register(instanceop.OperationTypeReinstall, instanceRunner); err != nil {
+		return fmt.Errorf("register the reinstall runner: %w", err)
 	}
 	if err := publisher.Register(commerce.EventSubscriptionActivated,
 		provision.HandleSubscriptionActivated(provision.BridgeDeps{Engine: engine})); err != nil {

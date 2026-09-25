@@ -34,3 +34,7 @@ WHERE id = $1;
 -- name: CreateNotification :exec
 INSERT INTO notifications (id, user_id, admin_id, type, title_key, message_key, parameters, severity)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+
+-- The action paths read the machine they act on; the runner too.
+-- name: InstanceByID :one
+SELECT * FROM instances WHERE id = $1 AND deleted_at IS NULL;

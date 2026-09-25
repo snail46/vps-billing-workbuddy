@@ -120,6 +120,15 @@ func (a *api) streamEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.streamOperation(w, r, operationID)
+}
+
+// streamOperation is the shared stream loop (ADR-008 §4): the row is read on
+// a second, an update is pushed when the row changed, and the stream ends when
+// the machine reaches a terminal state — the client's view and the record are
+// the same thing, with no second channel to keep honest. The caller owns the
+// authorization; this function owns the streaming.
+func (a *api) streamOperation(w http.ResponseWriter, r *http.Request, operationID uuid.UUID) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		httpx.WriteError(w, r, a.logger, httpx.ErrInternal())

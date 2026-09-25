@@ -59,6 +59,9 @@ type Deps struct {
 	Operations *operationstore.Store
 	// Instances is the customer's instance surface's store.
 	Instances *InstanceDeps
+	// User is the customer's own surface: detail, actions, wallet, invoices,
+	// notifications, tickets (ADR-011).
+	User *UserDeps
 }
 
 // Handler is the assembled HTTP surface.
@@ -131,7 +134,7 @@ func NewRouter(deps Deps) *Handler {
 	}))
 	r.Use(bmw.CORS(deps.Config.AllowedOrigins()))
 
-	api := &api{logger: logger, auth: deps.Auth, commerce: deps.Commerce, infra: deps.Infra, operations: &OperationsDeps{Store: deps.Operations}, instances: deps.Instances}
+	api := &api{logger: logger, auth: deps.Auth, commerce: deps.Commerce, infra: deps.Infra, operations: &OperationsDeps{Store: deps.Operations}, instances: deps.Instances, user: deps.User}
 
 	// Router-level handlers cover paths that match no route at all, so the
 	// envelope holds even for a malformed URL.
@@ -156,6 +159,9 @@ func NewRouter(deps Deps) *Handler {
 		}
 		if deps.Commerce != nil {
 			mountCommerce(v1, api)
+		}
+		if deps.User != nil {
+			mountUser(v1, api)
 		}
 	})
 
@@ -244,6 +250,52 @@ type api struct {
 	infra      *InfraDeps
 	operations *OperationsDeps
 	instances  *InstanceDeps
+	user       *UserDeps
+}
+
+// mountUser installs the customer's own surface (ADR-011). Reads are
+// session-only; the writes carry the CSRF token, because they change
+// something the customer owns or sent.
+func mountUser(v1 chi.Router, api *api) {
+	sessions := api.auth.Sessions
+
+	// The instance detail and its actions.
+	mount(v1, http.MethodGet, "/instances/{instanceID}", api.getInstance,
+		sessions.RequireUser)
+	mount(v1, http.MethodPost, "/instances/{instanceID}/restart", api.restartInstance,
+		sessions.RequireUser, sessions.RequireCSRF)
+	mount(v1, http.MethodPost, "/instances/{instanceID}/reinstall", api.reinstallInstance,
+		sessions.RequireUser, sessions.RequireCSRF)
+
+	// The customer's own operation read and event stream.
+	mount(v1, http.MethodGet, "/operations/{operationID}", api.getUserOperation,
+		sessions.RequireUser)
+	mount(v1, http.MethodGet, "/events", api.userStreamEvents,
+		sessions.RequireUser)
+
+	// Wallet, invoices, notifications.
+	mount(v1, http.MethodGet, "/wallet", api.getWallet,
+		sessions.RequireUser)
+	mount(v1, http.MethodGet, "/invoices", api.listInvoices,
+		sessions.RequireUser)
+	mount(v1, http.MethodGet, "/invoices/{invoiceID}", api.getInvoice,
+		sessions.RequireUser)
+	mount(v1, http.MethodGet, "/notifications", api.listNotifications,
+		sessions.RequireUser)
+	mount(v1, http.MethodPost, "/notifications/{notificationID}/read", api.markNotificationRead,
+		sessions.RequireUser, sessions.RequireCSRF)
+
+	// Tickets.
+	mount(v1, http.MethodGet, "/tickets", api.listTickets,
+		sessions.RequireUser)
+	mount(v1, http.MethodPost, "/tickets", api.createTicket,
+		sessions.RequireUser, sessions.RequireCSRF)
+	mount(v1, http.MethodGet, "/tickets/{ticketID}", api.getTicket,
+		sessions.RequireUser)
+	mount(v1, http.MethodPost, "/tickets/{ticketID}/messages", api.addTicketMessage,
+		sessions.RequireUser, sessions.RequireCSRF)
+	mount(v1, http.MethodPost, "/tickets/{ticketID}/close", api.closeTicket,
+		sessions.RequireUser, sessions.RequireCSRF)
 }
 
 func (a *api) notFound(w http.ResponseWriter, r *http.Request) {

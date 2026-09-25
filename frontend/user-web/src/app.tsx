@@ -1,35 +1,59 @@
-import type { ApiClient } from "@vps/shared";
-import { LocaleSwitcher } from "@vps/shared";
-import type { ReactNode } from "react";
-import { useTranslation } from "react-i18next";
-
-import { FoundationOverview } from "./foundation-overview.js";
-
 /**
- * Application shell.
+ * Application shell and routes (docs/10's page map).
  *
- * Phase 0 deliberately ships a shell rather than product pages: TASKS.md scopes
- * the foundation to the application skeleton plus the shared layer, and the
- * catalog, checkout and instance screens belong to Phase 8.
- *
- * There is no router yet. Routing is introduced with the first real pages, in
- * the phase that owns them, rather than being wired against a single screen.
+ * Signed-out visitors see the catalog, the auth screens and nothing else:
+ * the guarded routes redirect to sign-in, and the signed-in routes render
+ * inside the shell once the session has been recovered.
  */
+
+import type { ApiClient } from "@vps/shared";
+import { useTranslation } from "react-i18next";
+import type { ReactNode } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
+
+import { Layout } from "./layout.js";
+import { CatalogPage, CheckoutPage, OrderDetailPage, OrdersPage } from "./pages/commerce.js";
+import { DashboardPage, InvoicesPage, NotificationsPage, WalletPage } from "./pages/billing.js";
+import { InstanceDetailPage, InstancesPage } from "./pages/instances.js";
+import { AccountPage, TicketDetailPage, TicketsPage } from "./pages/support.js";
+import { LoginPage, RegisterPage } from "./pages/auth.js";
+import { useSession } from "./session-context.js";
+
 export function App({ apiClient }: { apiClient: ApiClient }): ReactNode {
   const { t } = useTranslation();
+  const { session, resolving } = useSession();
+
+  if (resolving) {
+    return (
+      <div className="flex min-h-full items-center justify-center">
+        <p className="text-sm text-content-muted">{t("common.state.loading")}</p>
+      </div>
+    );
+  }
+
+  const guarded = (node: ReactNode): ReactNode =>
+    session === null ? <Navigate to="/login" replace /> : node;
 
   return (
-    <div className="min-h-full">
-      <header className="border-b border-border-subtle bg-surface">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <span className="text-sm font-semibold text-content">{t("app.name")}</span>
-          <LocaleSwitcher />
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-5xl space-y-4 px-4 py-6">
-        <FoundationOverview apiClient={apiClient} />
-      </main>
-    </div>
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={session === null ? <Navigate to="/catalog" replace /> : <DashboardPage apiClient={apiClient} />} />
+        <Route path="/catalog" element={<CatalogPage apiClient={apiClient} />} />
+        <Route path="/login" element={session === null ? <LoginPage /> : <Navigate to="/" replace />} />
+        <Route path="/register" element={<RegisterPage apiClient={apiClient} />} />
+        <Route path="/checkout" element={guarded(<CheckoutPage apiClient={apiClient} />)} />
+        <Route path="/instances" element={guarded(<InstancesPage apiClient={apiClient} />)} />
+        <Route path="/instances/:instanceID" element={guarded(<InstanceDetailPage apiClient={apiClient} />)} />
+        <Route path="/orders" element={guarded(<OrdersPage apiClient={apiClient} />)} />
+        <Route path="/orders/:orderID" element={guarded(<OrderDetailPage apiClient={apiClient} />)} />
+        <Route path="/invoices" element={guarded(<InvoicesPage apiClient={apiClient} />)} />
+        <Route path="/wallet" element={guarded(<WalletPage apiClient={apiClient} />)} />
+        <Route path="/notifications" element={guarded(<NotificationsPage apiClient={apiClient} />)} />
+        <Route path="/tickets" element={guarded(<TicketsPage apiClient={apiClient} />)} />
+        <Route path="/tickets/:ticketID" element={guarded(<TicketDetailPage apiClient={apiClient} />)} />
+        <Route path="/account" element={guarded(<AccountPage />)} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
   );
 }

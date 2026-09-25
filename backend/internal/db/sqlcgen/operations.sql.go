@@ -257,6 +257,51 @@ func (q *Queries) MoveOperationToRetrying(ctx context.Context, arg MoveOperation
 	return result.RowsAffected(), nil
 }
 
+const openOperationByResource = `-- name: OpenOperationByResource :one
+SELECT id, type, resource_type, resource_id, status, phase, progress, message_key, provider_id, provider_operation_id, idempotency_key, retryable, retry_count, max_retries, run_after, error_code, error_message, trace_id, started_at, finished_at, created_at, updated_at FROM operations
+WHERE resource_type = $1 AND resource_id = $2
+  AND status IN ('queued', 'running', 'waiting_provider', 'waiting_resource', 'verifying', 'retrying')
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+type OpenOperationByResourceParams struct {
+	ResourceType string    `json:"resource_type"`
+	ResourceID   uuid.UUID `json:"resource_id"`
+}
+
+// The guard an action path consults: one live workflow per resource at a
+// time. A second click is a conflict, not a second machine working.
+func (q *Queries) OpenOperationByResource(ctx context.Context, arg OpenOperationByResourceParams) (Operation, error) {
+	row := q.db.QueryRow(ctx, openOperationByResource, arg.ResourceType, arg.ResourceID)
+	var i Operation
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.ResourceType,
+		&i.ResourceID,
+		&i.Status,
+		&i.Phase,
+		&i.Progress,
+		&i.MessageKey,
+		&i.ProviderID,
+		&i.ProviderOperationID,
+		&i.IdempotencyKey,
+		&i.Retryable,
+		&i.RetryCount,
+		&i.MaxRetries,
+		&i.RunAfter,
+		&i.ErrorCode,
+		&i.ErrorMessage,
+		&i.TraceID,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const operationByID = `-- name: OperationByID :one
 
 SELECT id, type, resource_type, resource_id, status, phase, progress, message_key, provider_id, provider_operation_id, idempotency_key, retryable, retry_count, max_retries, run_after, error_code, error_message, trace_id, started_at, finished_at, created_at, updated_at

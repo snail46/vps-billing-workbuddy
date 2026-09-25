@@ -750,6 +750,89 @@ paths:
           content:
             text/event-stream:
               schema: {type: string}
+  /wallet:
+    get:
+      operationId: getWallet
+      responses:
+        "200": {description: Wallet balances and ledger movements}
+  /invoices:
+    get:
+      operationId: listInvoices
+      responses:
+        "200": {description: Invoices}
+  /invoices/{id}:
+    get:
+      operationId: getInvoice
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": {description: Invoice with items}
+        "404": {description: Not found}
+  /notifications:
+    get:
+      operationId: listNotifications
+      responses:
+        "200": {description: Notifications with unread count}
+  /notifications/{id}/read:
+    post:
+      operationId: markNotificationRead
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": {description: Marked read}
+  /tickets:
+    get:
+      operationId: listTickets
+      responses:
+        "200": {description: Tickets}
+    post:
+      operationId: createTicket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject, message]
+              properties:
+                subject: {type: string}
+                priority: {type: string, enum: [low, normal, high]}
+                message: {type: string}
+      responses:
+        "201": {description: Ticket opened}
+  /tickets/{id}:
+    get:
+      operationId: getTicket
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": {description: Ticket with messages}
+        "404": {description: Not found}
+  /tickets/{id}/messages:
+    post:
+      operationId: addTicketMessage
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: {type: string}
+      responses:
+        "201": {description: Message appended}
+        "404": {description: Not found}
+  /tickets/{id}/close:
+    post:
+      operationId: closeTicket
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": {description: Ticket closed}
+        "404": {description: Not found}
 components:
   parameters:
     Id:

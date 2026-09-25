@@ -68,6 +68,17 @@ type Instance struct {
 	DeletedAt          pgtype.Timestamptz `json:"deleted_at"`
 }
 
+type InstanceNetwork struct {
+	ID                uuid.UUID          `json:"id"`
+	InstanceID        uuid.UUID          `json:"instance_id"`
+	Type              string             `json:"type"`
+	Address           *netip.Addr        `json:"address"`
+	Gateway           *netip.Addr        `json:"gateway"`
+	Prefix            pgtype.Int4        `json:"prefix"`
+	ProviderNetworkID pgtype.Text        `json:"provider_network_id"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
 type Invoice struct {
 	ID             uuid.UUID          `json:"id"`
 	InvoiceNo      string             `json:"invoice_no"`
@@ -286,6 +297,20 @@ type Plan struct {
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 }
 
+type PortForward struct {
+	ID                uuid.UUID          `json:"id"`
+	InstanceID        uuid.UUID          `json:"instance_id"`
+	Protocol          string             `json:"protocol"`
+	PublicIp          netip.Addr         `json:"public_ip"`
+	PublicPort        int32              `json:"public_port"`
+	GuestPort         int32              `json:"guest_port"`
+	Description       pgtype.Text        `json:"description"`
+	Status            string             `json:"status"`
+	ProviderMappingID pgtype.Text        `json:"provider_mapping_id"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Product struct {
 	ID              uuid.UUID          `json:"id"`
 	Slug            string             `json:"slug"`
@@ -358,6 +383,38 @@ type Subscription struct {
 	Version            int64              `json:"version"`
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Ticket struct {
+	ID        uuid.UUID          `json:"id"`
+	TicketNo  string             `json:"ticket_no"`
+	UserID    uuid.UUID          `json:"user_id"`
+	Subject   string             `json:"subject"`
+	Status    string             `json:"status"`
+	Priority  string             `json:"priority"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ClosedAt  pgtype.Timestamptz `json:"closed_at"`
+}
+
+type TicketMessage struct {
+	ID         uuid.UUID          `json:"id"`
+	TicketID   uuid.UUID          `json:"ticket_id"`
+	SenderType string             `json:"sender_type"`
+	SenderID   *uuid.UUID         `json:"sender_id"`
+	Message    string             `json:"message"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
+type TrafficUsage struct {
+	ID          uuid.UUID          `json:"id"`
+	InstanceID  uuid.UUID          `json:"instance_id"`
+	PeriodStart pgtype.Timestamptz `json:"period_start"`
+	PeriodEnd   pgtype.Timestamptz `json:"period_end"`
+	RxBytes     int64              `json:"rx_bytes"`
+	TxBytes     int64              `json:"tx_bytes"`
+	Source      string             `json:"source"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 type User struct {

@@ -374,3 +374,20 @@ func timePtr(value pgtype.Timestamptz) *time.Time {
 	}
 	return &value.Time
 }
+
+// OpenByResource reads the resource's live workflow, if it has one. The
+// action paths consult it so a second click is a conflict, not a second
+// machine working on the same hardware.
+func (s *Store) OpenByResource(ctx context.Context, resourceType string, resourceID uuid.UUID) (operation.Operation, bool, error) {
+	row, err := s.queries.OpenOperationByResource(ctx, sqlcgen.OpenOperationByResourceParams{
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return operation.Operation{}, false, nil
+	}
+	if err != nil {
+		return operation.Operation{}, false, fmt.Errorf("operationstore: read the open operation: %w", err)
+	}
+	return fromRow(row), true, nil
+}

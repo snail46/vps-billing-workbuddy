@@ -131,3 +131,12 @@ WHERE id = $1;
 UPDATE operations
 SET provider_operation_id = $2, updated_at = $3
 WHERE id = $1;
+
+-- The guard an action path consults: one live workflow per resource at a
+-- time. A second click is a conflict, not a second machine working.
+-- name: OpenOperationByResource :one
+SELECT * FROM operations
+WHERE resource_type = $1 AND resource_id = $2
+  AND status IN ('queued', 'running', 'waiting_provider', 'waiting_resource', 'verifying', 'retrying')
+ORDER BY created_at DESC
+LIMIT 1;
