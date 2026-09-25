@@ -280,7 +280,8 @@
 - [x] operations/tickets/audit
 - [x] admins/roles/settings
 
-> **状态：实现完成，本地全量验证通过；CI 待复验。**
+> **状态：已关闭。** CI run #35（提交 `e5d8e06`）五 job 全绿：0010 迁移在真实
+> PostgreSQL 前滚+回滚，全部管理端点与 admin-web 构建在 CI 实证通过。
 >
 > **ADR-012**：每个屏一个权限，路由挂载处显式声明；补种 docs/15 词汇缺口
 > `orders.read` / `products.read`（迁移 0010，Gate 权限计数 29→31）。
